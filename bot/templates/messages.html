@@ -44,14 +44,14 @@
         <tr>
             <th>Time</th>
             <th>Platform</th>
-            <th style="min-width:220px;">Chat</th>
+            <th style="min-width:160px;">Chat</th>
             <th>LID</th>
             <th>Dir</th>
             <th>Type</th>
             <th>Device</th>
-            <th style="min-width:300px;">Content</th>
-            <th style="width:140px;">Audio</th>
-            <th style="min-width:200px;">Whitelist</th>
+            <th style="min-width:200px;">Content</th>
+            <th style="width:120px;">Audio</th>
+            <th style="min-width:140px;">Whitelist</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -65,7 +65,7 @@
             <td>
                 {% if msg.is_group %}
                     <span class="chat-type-tag group">group</span>
-                    <a href="/messages?chat_id={{ msg.chat_id }}&platform={{ msg.platform }}" title="Filter by this group">
+                    <a href="/messages?chat_id={{ msg.chat_id }}&platform={{ msg.platform }}" title="Filter by this group" class="chat-group-name">
                         {{ msg.group_name or msg.display_name or msg.chat_id }}
                     </a>
                     {% if msg.effective_sender %}
@@ -84,7 +84,6 @@
                 {% else %}
                     <span class="badge badge-out">OUT</span>
                 {% endif %}
-                {% if msg.blocked %}<span class="badge" style="background:#fee;color:#c33;margin-left:.25rem" title="Not whitelisted">🚫</span>{% endif %}
             </td>
             <td>{{ 'voice' if msg.msg_type == 'voice' else 'text' }}</td>
             <td class="nowrap" style="font-size:.82rem;" title="{{ msg.device or '' }}">

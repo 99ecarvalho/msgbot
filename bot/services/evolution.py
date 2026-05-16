@@ -121,7 +121,7 @@ async def send_audio(to: str, audio_bytes: bytes, name: str | None = None) -> di
     b64 = base64.b64encode(audio_bytes).decode()
     payload = {
         "number": to,
-        "audio": f"data:audio/ogg;base64,{b64}",
+        "audio": b64,
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, json=payload, headers=_headers())

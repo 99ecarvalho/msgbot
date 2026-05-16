@@ -619,10 +619,15 @@ async def reply_message(request: Request):
             )
             log.info("auto_whitelisted", chat_id=chat_id, entry_type="person", source="web_reply")
 
-    # For group chats, the chat_id needs @g.us suffix for Evolution API
+    # Add proper JID suffix for Evolution API
     if is_group_chat:
-            if not chat_id.endswith("@g.us"):
-                chat_id = f"{chat_id}@g.us"
+        if not chat_id.endswith("@g.us"):
+            chat_id = f"{chat_id}@g.us"
+    else:
+        # DM contacts use LID format — append @lid so Evolution API doesn't
+        # misinterpret them as phone numbers (@s.whatsapp.net)
+        if not chat_id.endswith(("@lid", "@s.whatsapp.net")):
+            chat_id = f"{chat_id}@lid"
 
     try:
         out_audio_path = ""

@@ -194,7 +194,6 @@ a:hover { color: var(--accent-hover); }
 .page-body {
     flex: 1;
     padding: 1.5rem 1.75rem 2rem;
-    max-width: 1400px;
 }
 
 /* ===== Cards ===== */
@@ -310,7 +309,7 @@ article.card {
 /* ===== Tables ===== */
 .overflow-auto { overflow-x: auto; }
 
-table { font-size: 0.82rem; border-collapse: collapse; }
+table { font-size: 0.82rem; border-collapse: collapse; width: 100%; }
 
 table th {
     font-weight: 600;
@@ -570,6 +569,15 @@ audio {
 .chat-type-tag.dm {
     background: rgba(96,165,250,0.12);
     color: var(--blue);
+}
+
+.chat-group-name {
+    display: inline-block;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
 }
 
 .chat-sender {
