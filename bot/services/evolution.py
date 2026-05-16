@@ -162,6 +162,20 @@ async def disconnect_instance(name: str | None = None) -> dict:
     return resp.json()
 
 
+async def fetch_group_info(group_jid: str, name: str | None = None) -> dict:
+    """Fetch group metadata (subject/name) from Evolution API."""
+    name = name or settings.evolution_instance_name
+    url = f"{_base()}/group/findGroupInfos/{name}"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=_headers(), params={"groupJid": group_jid})
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as e:
+        log.debug("fetch_group_info_failed", group_jid=group_jid, error=str(e))
+    return {}
+
+
 async def health() -> dict:
     """Check Evolution API health."""
     try:

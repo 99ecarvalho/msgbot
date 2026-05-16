@@ -64,12 +64,21 @@ def _format_phone(value: str) -> Markup:
         else:
             formatted = f"{number[:4]}-{number[4:]}"
         return Markup(
-            f'<span style="font-size:.78em;opacity:.7">+55</span> {area} {formatted}'
+            f'<span class="phone-country">+55</span> {area} {formatted}'
         )
 
-    # Only add + for plausible phone numbers (max 13 digits)
+    # Plausible phone numbers (10-13 digits): format with +
     if _is_phone(digits):
+        # Try generic formatting: +CC rest
+        if len(digits) >= 11:
+            cc = digits[:2]
+            rest = digits[2:]
+            return Markup(f'<span class="phone-country">+{cc}</span> {rest}')
         return Markup(f"+{digits}")
+
+    # LIDs / non-phone identifiers (14+ digits): show as short ID
+    if len(digits) > 13 and digits.isdigit():
+        return Markup(f'<span class="phone-lid">{digits}</span>')
 
     return Markup(digits)
 
@@ -170,7 +179,7 @@ async def qr_reconnect():
 # ---- Messages ----
 
 @router.get("/messages", response_class=HTMLResponse)
-async def messages_page(request: Request, platform: str = "", chat_id: str = "", limit: int = 50, whitelisted: str = ""):
+async def messages_page(request: Request, platform: str = "", chat_id: str = "", sender: str = "", limit: int = 50, whitelisted: str = ""):
     chats = await db.get_all_chats()
 
     chat_rowid = None
@@ -186,9 +195,13 @@ async def messages_page(request: Request, platform: str = "", chat_id: str = "",
     if platform and not chat_rowid:
         msgs = [m for m in msgs if m.get("platform") == platform]
 
+    # Filter by sender phone/ID
+    if sender:
+        msgs = [m for m in msgs if m.get("sender_phone") == sender or m.get("effective_phone") == sender]
+
     # Optional filter: exclude blocked messages
     if whitelisted == "1":
-        msgs = [m for m in msgs if "[BLOCKED" not in (m.get("content_text") or "")]
+        msgs = [m for m in msgs if not m.get("blocked")]
 
     return templates.TemplateResponse("messages.html", {
         "request": request,
@@ -196,6 +209,7 @@ async def messages_page(request: Request, platform: str = "", chat_id: str = "",
         "chats": chats,
         "filter_platform": platform,
         "filter_chat_id": chat_id,
+        "filter_sender": sender,
         "filter_whitelisted": whitelisted,
     })
 
@@ -276,7 +290,29 @@ async def save_chat_config(
 async def whitelist_page(request: Request):
     """Whitelist management page."""
     entries = await db.get_whitelist()
+    chats = await db.get_all_chats()
+    groups = [c for c in chats if c.get("is_group")]
+    # Enrich entries with group display names
+    group_names = {c["chat_id"]: c.get("group_name") or c.get("display_name") or c["chat_id"] for c in groups}
+    for e in entries:
+        gid = e.get("group_id", "")
+        e["group_display_name"] = group_names.get(gid, gid) if gid else ""
     return templates.TemplateResponse("whitelist.html", {
+        "request": request,
+        "whitelist": entries,
+        "groups": groups,
+    })
+
+
+async def _enriched_whitelist(request: Request):
+    """Helper: return enriched whitelist fragment."""
+    entries = await db.get_whitelist()
+    chats = await db.get_all_chats()
+    group_names = {c["chat_id"]: c.get("group_name") or c.get("display_name") or c["chat_id"] for c in chats if c.get("is_group")}
+    for e in entries:
+        gid = e.get("group_id", "")
+        e["group_display_name"] = group_names.get(gid, gid) if gid else ""
+    return templates.TemplateResponse("_whitelist_rows.html", {
         "request": request,
         "whitelist": entries,
     })
@@ -285,64 +321,73 @@ async def whitelist_page(request: Request):
 @router.post("/whitelist")
 async def add_whitelist(
     request: Request,
-    filter_type: str = Form(...),
-    value: str = Form(...),
+    entry_type: str = Form(...),
     platform: str = Form(""),
+    phone: str = Form(""),
+    group_id: str = Form(""),
+    display_name: str = Form(""),
     notes: str = Form(""),
 ):
-    value = value.strip()
-    if not value:
-        return HTMLResponse("Value is required", status_code=400)
-    await db.add_whitelist_entry(filter_type=filter_type, value=value, platform=platform, notes=notes)
+    phone = phone.strip().lstrip("+")
+    group_id = group_id.strip()
+    if entry_type == "person" and not phone:
+        return HTMLResponse("Phone is required for person entries", status_code=400)
+    if entry_type == "group" and not group_id:
+        return HTMLResponse("Group is required for group entries", status_code=400)
+    if entry_type == "person_in_group" and (not phone or not group_id):
+        return HTMLResponse("Phone and group are required", status_code=400)
 
-    # If called from messages page (HX-Target is wl-toast), return a toast
+    await db.add_whitelist_entry(
+        entry_type=entry_type, platform=platform,
+        phone=phone, group_id=group_id,
+        display_name=display_name.strip(), notes=notes.strip(),
+    )
+
     hx_target = request.headers.get("HX-Target", "")
     if hx_target == "wl-toast":
-        return HTMLResponse(f'<div class="notice">{value} added to whitelist</div>')
+        label = display_name or phone or group_id
+        return HTMLResponse(f'<div class="notice">{label} added to whitelist</div>')
 
-    # Return updated list
-    entries = await db.get_whitelist()
-    return templates.TemplateResponse("_whitelist_rows.html", {
-        "request": request,
-        "whitelist": entries,
-    })
+    return await _enriched_whitelist(request)
 
 
 @router.post("/messages/whitelist-quick")
 async def quick_whitelist(request: Request):
-    """Quick-add a phone from the messages page to the whitelist."""
+    """Quick-add from the messages page to the whitelist."""
     form = await request.form()
+    entry_type = form.get("entry_type", "person")
     phone = form.get("phone", "").strip()
+    group_id = form.get("group_id", "").strip()
     platform = form.get("platform", "whatsapp")
     display_name = form.get("display_name", "")
-
-    if not phone:
-        return HTMLResponse("Phone is required", status_code=400)
 
     # Check if already whitelisted
     existing = await db.get_whitelist()
     for e in existing:
-        if e["filter_type"] == "phone" and e["value"] == phone:
+        et = e.get("entry_type", "")
+        if et == "person" and entry_type == "person" and e.get("phone") == phone:
             return HTMLResponse(f'<span class="notice">{display_name or phone} already whitelisted</span>')
+        if et == "group" and entry_type == "group" and e.get("group_id") == group_id:
+            return HTMLResponse(f'<span class="notice">Group already whitelisted</span>')
+        if et == "person_in_group" and entry_type == "person_in_group" and e.get("phone") == phone and e.get("group_id") == group_id:
+            return HTMLResponse(f'<span class="notice">{display_name or phone} already whitelisted in this group</span>')
 
     await db.add_whitelist_entry(
-        filter_type="phone",
-        value=phone,
+        entry_type=entry_type,
         platform=platform,
+        phone=phone,
+        group_id=group_id,
         display_name=display_name,
         notes="Quick-added from messages",
     )
-    return HTMLResponse(f'<span class="notice">{display_name or phone} whitelisted</span>')
+    label = display_name or phone or group_id
+    return HTMLResponse(f'<span class="notice">{label} whitelisted</span>')
 
 
 @router.delete("/whitelist/{entry_id}")
 async def delete_whitelist(request: Request, entry_id: int):
     await db.remove_whitelist_entry(entry_id)
-    entries = await db.get_whitelist()
-    return templates.TemplateResponse("_whitelist_rows.html", {
-        "request": request,
-        "whitelist": entries,
-    })
+    return await _enriched_whitelist(request)
 
 
 @router.post("/whitelist/{entry_id}/toggle")
@@ -351,11 +396,7 @@ async def toggle_whitelist(request: Request, entry_id: int):
     current = next((e for e in entries if e["id"] == entry_id), None)
     if current:
         await db.toggle_whitelist_entry(entry_id, not current["enabled"])
-    entries = await db.get_whitelist()
-    return templates.TemplateResponse("_whitelist_rows.html", {
-        "request": request,
-        "whitelist": entries,
-    })
+    return await _enriched_whitelist(request)
 
 
 # ---- Logs ----
@@ -519,19 +560,33 @@ async def reply_message(request: Request):
 
     # Auto-whitelist the recipient so their replies are not blocked
     existing = await db.get_whitelist()
-    already = any(e["filter_type"] == "phone" and e["value"] == chat_id for e in existing)
-    if not already:
-        await db.add_whitelist_entry(
-            filter_type="phone", value=chat_id,
-            platform="whatsapp",
-            notes="Auto-whitelisted via web reply",
-        )
-        log.info("auto_whitelisted", chat_id=chat_id, source="web_reply")
-
-    # For group chats, the chat_id needs @g.us suffix for Evolution API
+    is_group_chat = False
     if chat_rowid:
         chat_info = await db.get_chat(chat_rowid)
-        if chat_info and chat_info.get("is_group"):
+        is_group_chat = bool(chat_info and chat_info.get("is_group"))
+
+    if is_group_chat:
+        already = any(e.get("entry_type") == "group" and e.get("group_id") == chat_id for e in existing)
+        if not already:
+            await db.add_whitelist_entry(
+                entry_type="group", group_id=chat_id,
+                platform="whatsapp",
+                display_name=chat_info.get("group_name", "") if chat_info else "",
+                notes="Auto-whitelisted via web reply",
+            )
+            log.info("auto_whitelisted", chat_id=chat_id, entry_type="group", source="web_reply")
+    else:
+        already = any(e.get("entry_type") == "person" and e.get("phone") == chat_id for e in existing)
+        if not already:
+            await db.add_whitelist_entry(
+                entry_type="person", phone=chat_id,
+                platform="whatsapp",
+                notes="Auto-whitelisted via web reply",
+            )
+            log.info("auto_whitelisted", chat_id=chat_id, entry_type="person", source="web_reply")
+
+    # For group chats, the chat_id needs @g.us suffix for Evolution API
+    if is_group_chat:
             if not chat_id.endswith("@g.us"):
                 chat_id = f"{chat_id}@g.us"
 

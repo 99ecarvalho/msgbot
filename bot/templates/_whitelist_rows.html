@@ -1,13 +1,30 @@
 {% for e in whitelist %}
 <tr>
-    <td>{{ e.filter_type }}</td>
+    <td>
+        {% if e.entry_type == 'person' %}
+            <span class="badge badge-in">Person</span>
+        {% elif e.entry_type == 'group' %}
+            <span class="badge badge-out">Group</span>
+        {% elif e.entry_type == 'person_in_group' %}
+            <span class="badge" style="background:var(--yellow-soft);color:var(--yellow)">Person&nbsp;in&nbsp;Group</span>
+        {% else %}
+            {{ e.entry_type or e.filter_type or '?' }}
+        {% endif %}
+    </td>
     <td>{{ e.platform or 'any' }}</td>
     <td>{{ e.display_name or '—' }}</td>
     <td class="nowrap text-mono" style="font-size:.82rem;">
-        {% if e.filter_type == 'phone' %}
-            {{ e.value | format_phone }}
+        {% if e.phone %}
+            {{ e.phone | format_phone }}
         {% else %}
-            {{ e.value }}
+            —
+        {% endif %}
+    </td>
+    <td style="font-size:.82rem;">
+        {% if e.entry_type in ('group', 'person_in_group') %}
+            {{ e.group_display_name or e.group_id or '—' }}
+        {% else %}
+            —
         {% endif %}
     </td>
     <td style="font-size:.82rem;">{{ e.notes }}</td>
@@ -29,5 +46,5 @@
 </tr>
 {% endfor %}
 {% if not whitelist %}
-<tr><td colspan="7" class="secondary">No whitelist entries. All incoming messages will be logged but not responded to.</td></tr>
+<tr><td colspan="8" class="secondary">No whitelist entries. All incoming messages will be logged but not responded to.</td></tr>
 {% endif %}

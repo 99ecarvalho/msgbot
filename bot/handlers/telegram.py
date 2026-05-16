@@ -136,13 +136,15 @@ async def _handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.error("auto_transcribe_failed", chat_id=chat_id, error=str(e))
 
     # Whitelist check
-    wl_entry = await db.is_whitelisted("telegram", chat_id, display_name)
+    tg_is_group = update.effective_chat.type in ("group", "supergroup")
+    wl_entry = await db.is_whitelisted("telegram", chat_id, is_group=tg_is_group)
     if not wl_entry:
         await db.save_message(
             chat["id"], "in", "voice",
             audio_path=audio_path,
             content_text="",
             transcription=transcription,
+            blocked=True,
         )
         await db.save_log("info", f"Blocked audio from {display_name} ({chat_id}) — not whitelisted", source="telegram")
         log.info("telegram_blocked", chat_id=chat_id, display_name=display_name, reason="not_whitelisted")
@@ -175,9 +177,10 @@ async def _handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Whitelist check
-    wl_entry = await db.is_whitelisted("telegram", chat_id, display_name)
+    tg_is_group = update.effective_chat.type in ("group", "supergroup")
+    wl_entry = await db.is_whitelisted("telegram", chat_id, is_group=tg_is_group)
     if not wl_entry:
-        await db.save_message(chat["id"], "in", "text", content_text=text)
+        await db.save_message(chat["id"], "in", "text", content_text=text, blocked=True)
         await db.save_log("info", f"Blocked text from {display_name} ({chat_id}) — not whitelisted", source="telegram")
         log.info("telegram_blocked", chat_id=chat_id, display_name=display_name, reason="not_whitelisted")
         return

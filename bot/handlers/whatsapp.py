@@ -80,7 +80,7 @@ async def _handle_messages_upsert(payload: dict):
         return  # Skip our own messages
 
     # In groups, also check participant — if it matches the bot's own JID, skip
-    participant = key.get("participant", "")
+    participant = key.get("participant") or ""
     instance_jid = data.get("instance", {}).get("wuid", "")
     if participant and instance_jid and participant == instance_jid:
         log.debug("skipping_own_message", reason="participant_matches_instance")
@@ -104,22 +104,16 @@ async def _handle_messages_upsert(payload: dict):
     group_name = ""
     sender_phone = ""
 
-    # Top-level 'sender' field has the real phone (works even with LID participants)
-    # NOTE: 'sender' is at the payload root, NOT inside data
-    top_sender = payload.get("sender", "") or data.get("sender", "")
-    top_sender_phone = top_sender.split("@")[0] if "@" in top_sender else ""
-
     if is_group:
         # For groups: group_name comes from Evolution API webhook data
         group_name = data.get("groupName", "") or data.get("groupSubject", "")
-        # Prefer top-level sender phone; fall back to participant JID (skip @lid)
-        if top_sender_phone:
-            sender_phone = top_sender_phone
-        elif participant and "@lid" not in participant:
+        # Use participant JID as sender identifier (may be @lid or @s.whatsapp.net)
+        if participant:
             sender_phone = participant.split("@")[0]
+
     else:
-        # For DMs: sender phone = top-level sender or remote JID phone
-        sender_phone = top_sender_phone or phone
+        # For DMs: sender phone = phone extracted from remoteJid
+        sender_phone = phone
 
     chat = await db.get_or_create_chat(
         "whatsapp", phone,
@@ -127,9 +121,18 @@ async def _handle_messages_upsert(payload: dict):
         group_name=group_name, is_group=is_group,
     )
 
-    # If webhook didn't include group name, use DB-cached name
-    if is_group and not group_name:
-        group_name = chat.get("group_name", "")
+    # If webhook didn't include group name, try fetching from Evolution API
+    if is_group and not chat.get("group_name"):
+        try:
+            info = await evolution.fetch_group_info(remote_jid)
+            fetched_name = info.get("subject", "")
+            if fetched_name:
+                group_name = fetched_name
+                await db.update_chat(chat["id"], group_name=fetched_name, display_name=fetched_name)
+                chat["group_name"] = fetched_name
+                chat["display_name"] = fetched_name
+        except Exception:
+            pass
 
     message = data.get("message", {})
     message_type = data.get("messageType", "")
@@ -178,7 +181,7 @@ async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_p
         log.error("auto_transcribe_failed", phone=phone, error=str(e))
 
     # Whitelist check
-    wl_entry = await db.is_whitelisted("whatsapp", phone, push_name or group_name, sender_phone=sender_phone)
+    wl_entry = await db.is_whitelisted("whatsapp", phone, is_group=bool(group_name), sender_phone=sender_phone)
     if not wl_entry:
         await db.save_message(
             chat["id"], "in", "voice",
@@ -186,7 +189,7 @@ async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_p
             content_text="",
             transcription=transcription,
             sender_name=push_name, sender_phone=sender_phone,
-            device=device,
+            device=device, blocked=True,
         )
         await db.save_log("info", f"Blocked audio from {push_name} ({phone}) [{sender_phone}] device={device} — not whitelisted", source="whatsapp")
         log.info("whatsapp_blocked", phone=phone, push_name=push_name, reason="not_whitelisted")
@@ -213,11 +216,11 @@ async def _handle_text_message(chat: dict, phone: str, push_name: str, sender_ph
         return
 
     # Whitelist check
-    wl_entry = await db.is_whitelisted("whatsapp", phone, push_name or group_name, sender_phone=sender_phone)
+    wl_entry = await db.is_whitelisted("whatsapp", phone, is_group=bool(group_name), sender_phone=sender_phone)
     if not wl_entry:
         await db.save_message(chat["id"], "in", "text", content_text=text,
                               sender_name=push_name, sender_phone=sender_phone,
-                              device=device)
+                              device=device, blocked=True)
         await db.save_log("info", f"Blocked text from {push_name} ({phone}) [{sender_phone}] device={device} — not whitelisted", source="whatsapp")
         log.info("whatsapp_blocked", phone=phone, push_name=push_name, reason="not_whitelisted")
         return

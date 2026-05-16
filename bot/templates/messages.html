@@ -62,15 +62,19 @@
                 <span class="badge badge-{{ msg.platform }}">{{ msg.platform }}</span>
             </td>
             <td>
-                <a href="/messages/{{ msg.chat_rowid }}">
-                    {% if msg.is_group %}
-                        <span class="chat-type-tag group">group</span>
-                        {{ msg.group_name or msg.chat_id }}
-                        {% if msg.effective_sender %}<br><span class="chat-sender">↳ {{ msg.effective_sender }}</span>{% endif %}
-                    {% else %}
-                        {{ msg.display_name or msg.chat_id }}
+                {% if msg.is_group %}
+                    <span class="chat-type-tag group">group</span>
+                    <a href="/messages?chat_id={{ msg.chat_id }}&platform={{ msg.platform }}" title="Filter by this group">
+                        {{ msg.group_name or msg.display_name or msg.chat_id }}
+                    </a>
+                    {% if msg.effective_sender %}
+                    <br><a href="/messages?sender={{ msg.effective_phone }}&platform={{ msg.platform }}" class="chat-sender" title="Filter by this sender">↳ {{ msg.effective_sender }}</a>
                     {% endif %}
-                </a>
+                {% else %}
+                    <a href="/messages/{{ msg.chat_rowid }}">
+                        {{ msg.display_name or msg.chat_id }}
+                    </a>
+                {% endif %}
             </td>
             <td class="nowrap" style="font-size:.82rem;">{{ msg.effective_phone | format_phone }}</td>
             <td>
@@ -79,6 +83,7 @@
                 {% else %}
                     <span class="badge badge-out">OUT</span>
                 {% endif %}
+                {% if msg.blocked %}<span class="badge" style="background:#fee;color:#c33;margin-left:.25rem" title="Not whitelisted">🚫</span>{% endif %}
             </td>
             <td>{{ 'voice' if msg.msg_type == 'voice' else 'text' }}</td>
             <td class="nowrap" style="font-size:.82rem;" title="{{ msg.device or '' }}">
@@ -123,14 +128,25 @@
             <td>
                 {% if msg.direction == 'in' %}
                 <div style="display:flex; gap:.25rem;">
+                {% if msg.is_group %}
                 <button class="outline small"
                     hx-post="/messages/whitelist-quick"
-                    hx-vals='{"phone":"{{ msg.effective_phone }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or msg.display_name or '' }}"}'
+                    hx-vals='{"entry_type":"person_in_group","phone":"{{ msg.effective_phone }}","group_id":"{{ msg.chat_id }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or '' }}"}'
                     hx-target="#wl-toast"
                     hx-swap="innerHTML"
-                    title="Add {{ msg.effective_phone | format_phone_plain }} to whitelist"
+                    title="Whitelist {{ msg.effective_sender or msg.effective_phone }} in this group"
                     style="padding:.2rem .5rem; font-size:.75rem"
                 >+WL</button>
+                {% else %}
+                <button class="outline small"
+                    hx-post="/messages/whitelist-quick"
+                    hx-vals='{"entry_type":"person","phone":"{{ msg.effective_phone }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or msg.display_name or '' }}"}'
+                    hx-target="#wl-toast"
+                    hx-swap="innerHTML"
+                    title="Whitelist {{ msg.effective_sender or msg.effective_phone }}"
+                    style="padding:.2rem .5rem; font-size:.75rem"
+                >+WL</button>
+                {% endif %}
                 <button class="outline small reply-btn"
                     data-chat-id="{{ msg.chat_id }}"
                     data-platform="{{ msg.platform }}"

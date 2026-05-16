@@ -58,6 +58,7 @@ async def _init_tables(db: aiosqlite.Connection):
             sender_name  TEXT DEFAULT '',       -- who sent the message (pushName / display)
             sender_phone TEXT DEFAULT '',       -- sender phone (esp. for group messages)
             device       TEXT DEFAULT '',       -- android | ios | web | desktop | unknown
+            blocked      INTEGER DEFAULT 0,     -- 1 if message was blocked (not whitelisted)
             created_at   REAL NOT NULL
         );
 
@@ -175,9 +176,58 @@ async def _init_tables(db: aiosqlite.Connection):
     except Exception:
         pass
     try:
+        await db.execute("ALTER TABLE messages ADD COLUMN blocked INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
         await db.execute("ALTER TABLE whitelist ADD COLUMN display_name TEXT DEFAULT ''")
     except Exception:
         pass
+    # New whitelist model columns
+    try:
+        await db.execute("ALTER TABLE whitelist ADD COLUMN entry_type TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE whitelist ADD COLUMN phone TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE whitelist ADD COLUMN group_id TEXT DEFAULT ''")
+    except Exception:
+        pass
+    await db.commit()
+
+    # Migrate old whitelist entries (filter_type/value → entry_type/phone/group_id)
+    old_entries = await db.execute_fetchall(
+        "SELECT id, filter_type, value FROM whitelist WHERE entry_type = ''"
+    )
+    for row in old_entries:
+        ft, val = row["filter_type"], row["value"]
+        if ft == "phone":
+            # Heuristic: ≤13 digits = real phone → person; longer = group JID → group
+            digits = val.lstrip("+")
+            if digits.isdigit() and len(digits) <= 13:
+                await db.execute(
+                    "UPDATE whitelist SET entry_type='person', phone=? WHERE id=?",
+                    (val, row["id"]),
+                )
+            else:
+                await db.execute(
+                    "UPDATE whitelist SET entry_type='group', group_id=? WHERE id=?",
+                    (val, row["id"]),
+                )
+        elif ft == "channel":
+            await db.execute(
+                "UPDATE whitelist SET entry_type='group', group_id=? WHERE id=?",
+                (val, row["id"]),
+            )
+        else:
+            # contact_name → person with display_name
+            await db.execute(
+                "UPDATE whitelist SET entry_type='person', display_name=? WHERE id=?",
+                (val, row["id"]),
+            )
     await db.commit()
 
     # Seed default workflow if none exist
@@ -254,12 +304,13 @@ async def save_message(
     sender_name: str = "",
     sender_phone: str = "",
     device: str = "",
+    blocked: bool = False,
 ) -> int:
     db = await get_db()
     now = time.time()
     cursor = await db.execute(
-        "INSERT INTO messages (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, device, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, device, now),
+        "INSERT INTO messages (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, device, blocked, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, device, int(blocked), now),
     )
     await db.commit()
     return cursor.lastrowid  # type: ignore[return-value]
@@ -483,13 +534,19 @@ async def clear_llm_logs():
 # ---- Whitelist helpers ----
 
 async def add_whitelist_entry(
-    filter_type: str, value: str, platform: str = "", notes: str = "", display_name: str = ""
+    entry_type: str,       # person | group | person_in_group
+    platform: str = "",
+    phone: str = "",
+    group_id: str = "",
+    display_name: str = "",
+    notes: str = "",
 ) -> int:
     db = await get_db()
     now = time.time()
     cursor = await db.execute(
-        "INSERT INTO whitelist (platform, filter_type, value, enabled, notes, display_name, created_at) VALUES (?,?,?,1,?,?,?)",
-        (platform, filter_type, value, notes, display_name, now),
+        "INSERT INTO whitelist (platform, filter_type, value, entry_type, phone, group_id, display_name, enabled, notes, created_at) "
+        "VALUES (?,?,?,?,?,?,?,1,?,?)",
+        (platform, entry_type, phone or group_id, entry_type, phone, group_id, display_name, notes, now),
     )
     await db.commit()
     return cursor.lastrowid  # type: ignore[return-value]
@@ -513,31 +570,47 @@ async def get_whitelist() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def is_whitelisted(platform: str, chat_id: str, display_name: str = "", sender_phone: str = "") -> dict | None:
-    """Check if a contact/channel is whitelisted.
+async def is_whitelisted(
+    platform: str,
+    chat_id: str,
+    is_group: bool = False,
+    sender_phone: str = "",
+) -> dict | None:
+    """Check if a message is whitelisted.
 
-    If no enabled whitelist entries exist, ALL messages are allowed (open mode).
-    Returns the matching whitelist entry dict, or a synthetic entry for open mode,
-    or None if blocked.
+    Three entry types:
+      person          – matches DMs from this phone
+      group           – matches ALL messages in this group
+      person_in_group – matches ONE person in ONE group
+
+    Returns the matching whitelist entry dict, or None if blocked.
     """
     db = await get_db()
     rows = await db.execute_fetchall("SELECT * FROM whitelist WHERE enabled=1")
     if not rows:
-        # No whitelist entries → deny by default (workflows won't run)
         return None
     for row in rows:
         r = dict(row)
         # Platform filter
         if r["platform"] and r["platform"] != platform:
             continue
-        ft = r["filter_type"]
-        val = r["value"]
-        if ft == "phone" and (val == chat_id or (sender_phone and val == sender_phone)):
-            return r
-        if ft == "contact_name" and display_name and val.lower() in display_name.lower():
-            return r
-        if ft == "channel" and display_name and val.lower() in display_name.lower():
-            return r
+        et = r.get("entry_type") or r.get("filter_type", "")
+        if et == "person" and not is_group:
+            # DM: match by phone
+            if r.get("phone") and r["phone"] == chat_id:
+                return r
+            if r.get("phone") and sender_phone and r["phone"] == sender_phone:
+                return r
+        elif et == "group" and is_group:
+            # Entire group whitelisted
+            if r.get("group_id") and r["group_id"] == chat_id:
+                return r
+        elif et == "person_in_group" and is_group:
+            # Specific person in specific group
+            if (r.get("group_id") and r["group_id"] == chat_id
+                    and r.get("phone") and sender_phone
+                    and r["phone"] == sender_phone):
+                return r
     return None
 
 
