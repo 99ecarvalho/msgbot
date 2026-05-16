@@ -13,7 +13,15 @@
         <button class="log-filter" data-level="error">Error</button>
         <button class="log-filter" data-level="workflow">Workflow</button>
     </fieldset>
-    <button id="log-pause" class="outline secondary">Pause</button>
+    <div style="display:flex; gap:.5rem;">
+        <button id="log-pause" class="outline secondary">Pause</button>
+        <button id="log-clear" class="outline secondary"
+            hx-post="/config/clear/logs"
+            hx-confirm="Clear all logs?"
+            hx-swap="none"
+            onclick="setTimeout(()=>{document.getElementById('log-container').innerHTML='<p class=secondary>Logs cleared.</p>'},300)"
+        >Clear Logs</button>
+    </div>
 </div>
 
 <div id="log-container" class="log-container">

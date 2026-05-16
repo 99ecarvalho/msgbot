@@ -36,6 +36,24 @@ templates.env.globals["ts_to_str"] = _ts_to_str
 templates.env.globals["now"] = lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _format_phone(value: str) -> str:
+    """Convert WhatsApp JID to human-readable phone or short ID."""
+    if not value:
+        return ""
+    # Strip @s.whatsapp.net → phone number
+    if "@s.whatsapp.net" in value:
+        return "+" + value.split("@")[0]
+    # Strip @g.us → group JID (just the numeric part)
+    if "@g.us" in value:
+        return value.split("@")[0]
+    # Already a phone number or Telegram ID
+    return value
+
+
+templates.env.filters["format_phone"] = _format_phone
+templates.env.globals["format_phone"] = _format_phone
+
+
 # ---- Dashboard ----
 
 @router.get("/", response_class=HTMLResponse)
@@ -288,11 +306,22 @@ async def logs_page(request: Request):
     return templates.TemplateResponse("logs.html", {"request": request})
 
 
+@router.get("/llm-logs", response_class=HTMLResponse)
+async def llm_logs_page(request: Request):
+    logs = await db.get_llm_logs(limit=200)
+    llm_stats = await db.get_llm_stats()
+    return templates.TemplateResponse("llm_logs.html", {
+        "request": request,
+        "logs": logs,
+        "llm_stats": llm_stats,
+    })
+
+
 # ---- Database maintenance ----
 
 @router.post("/config/clear/{target}")
 async def clear_data(request: Request, target: str):
-    valid = {"messages", "logs", "chats", "whitelist", "config", "all"}
+    valid = {"messages", "logs", "chats", "whitelist", "config", "llm_logs", "all"}
     if target not in valid:
         return HTMLResponse("Invalid target", status_code=400)
 
@@ -359,6 +388,36 @@ async def tools_transcribe(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.post("/messages/{msg_id}/transcribe")
+async def transcribe_message(msg_id: int):
+    """Transcribe audio for a specific message and save result to DB."""
+    from fastapi.responses import JSONResponse
+    msg = await db.get_message(msg_id)
+    if not msg:
+        return JSONResponse({"error": "Message not found"}, status_code=404)
+    if not msg.get("audio_path"):
+        return JSONResponse({"error": "No audio for this message"}, status_code=400)
+
+    audio_file = settings.data_dir / msg["audio_path"]
+    if not audio_file.exists():
+        return JSONResponse({"error": "Audio file missing"}, status_code=404)
+
+    try:
+        audio_bytes = audio_file.read_bytes()
+        result = await transcriber_svc.transcribe(
+            audio_bytes,
+            filename=audio_file.name,
+            language=None,
+        )
+        text = result.get("text", "").strip()
+        if text:
+            await db.update_message(msg_id, transcription=text)
+        return JSONResponse({"text": text, "language": result.get("language", "")})
+    except Exception as e:
+        log.error("message_transcribe_failed", msg_id=msg_id, error=str(e))
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @router.post("/tools/tts")
 async def tools_tts(request: Request):
     from fastapi.responses import JSONResponse, Response
@@ -398,6 +457,13 @@ async def reply_message(request: Request):
 
     if platform != "whatsapp":
         return JSONResponse({"error": "Only WhatsApp replies are supported"}, status_code=400)
+
+    # For group chats, the chat_id needs @g.us suffix for Evolution API
+    if chat_rowid:
+        chat_info = await db.get_chat(chat_rowid)
+        if chat_info and chat_info.get("is_group"):
+            if not chat_id.endswith("@g.us"):
+                chat_id = f"{chat_id}@g.us"
 
     try:
         out_audio_path = ""
@@ -446,6 +512,167 @@ async def serve_audio(path: str):
     elif file_path.suffix == ".mp3":
         media = "audio/mpeg"
     return FileResponse(str(file_path), media_type=media)
+
+
+# ---- WebSocket routes ----
+
+# ---- Workflows ----
+
+@router.get("/workflows", response_class=HTMLResponse)
+async def workflows_page(request: Request):
+    all_wf = await db.get_all_workflows()
+    workflows = []
+    for wf in all_wf:
+        steps = await db.get_workflow_steps(wf["id"])
+        linked = await db.get_whitelist_entries_for_workflow(wf["id"])
+        wf["step_count"] = len(steps)
+        wf["linked_contacts"] = len(linked)
+        workflows.append(wf)
+    return templates.TemplateResponse("workflows.html", {
+        "request": request,
+        "workflows": workflows,
+    })
+
+
+@router.post("/workflows")
+async def create_workflow(request: Request, name: str = Form(...), description: str = Form("")):
+    await db.create_workflow(name=name, description=description)
+    return RedirectResponse("/workflows", status_code=303)
+
+
+@router.get("/workflows/{workflow_id}", response_class=HTMLResponse)
+async def workflow_detail(request: Request, workflow_id: int):
+    wf = await db.get_workflow_with_steps(workflow_id)
+    if not wf:
+        return HTMLResponse("Workflow not found", status_code=404)
+    linked_whitelist = await db.get_whitelist_entries_for_workflow(workflow_id)
+    all_whitelist = await db.get_whitelist()
+    wf_logs = await db.get_workflow_logs(workflow_id=workflow_id, limit=50)
+    return templates.TemplateResponse("workflow_detail.html", {
+        "request": request,
+        "workflow": wf,
+        "linked_whitelist": linked_whitelist,
+        "all_whitelist": all_whitelist,
+        "wf_logs": wf_logs,
+    })
+
+
+@router.post("/workflows/{workflow_id}/update")
+async def update_workflow(
+    request: Request,
+    workflow_id: int,
+    name: str = Form(...),
+    description: str = Form(""),
+    enabled: int = Form(0),
+):
+    await db.update_workflow(workflow_id, name=name, description=description, enabled=enabled)
+    if request.headers.get("HX-Request"):
+        return HTMLResponse('<span class="notice">Saved</span>')
+    return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
+
+
+@router.delete("/workflows/{workflow_id}")
+async def delete_workflow(request: Request, workflow_id: int):
+    await db.delete_workflow(workflow_id)
+    if request.headers.get("HX-Request"):
+        return HTMLResponse("", headers={"HX-Redirect": "/workflows"})
+    return RedirectResponse("/workflows", status_code=303)
+
+
+@router.post("/workflows/{workflow_id}/steps")
+async def add_workflow_step(
+    request: Request,
+    workflow_id: int,
+    step_type: str = Form(...),
+    label: str = Form(""),
+    config_json: str = Form("{}"),
+    condition: str = Form(""),
+):
+    steps = await db.get_workflow_steps(workflow_id)
+    next_order = max((s["step_order"] for s in steps), default=0) + 1
+    await db.add_workflow_step(
+        workflow_id, next_order, step_type,
+        label=label, config_json=config_json, condition=condition,
+    )
+    return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
+
+
+@router.post("/workflows/{workflow_id}/steps/{step_id}")
+async def update_workflow_step(
+    request: Request,
+    workflow_id: int,
+    step_id: int,
+    label: str = Form(""),
+    config_json: str = Form("{}"),
+    condition: str = Form(""),
+    enabled: int = Form(0),
+):
+    await db.update_workflow_step(
+        step_id, label=label, config_json=config_json,
+        condition=condition, enabled=enabled,
+    )
+    if request.headers.get("HX-Request"):
+        wf = await db.get_workflow_with_steps(workflow_id)
+        step = next((s for s in wf["steps"] if s["id"] == step_id), None)
+        if step:
+            return HTMLResponse(f"""<tr>
+                <td>{step['step_order']}</td>
+                <td><code>{step['step_type']}</code></td>
+                <td>
+                    <form method="post" action="/workflows/{workflow_id}/steps/{step_id}"
+                          hx-post="/workflows/{workflow_id}/steps/{step_id}"
+                          hx-target="closest tr" hx-swap="outerHTML"
+                          style="display:flex; gap:0.4rem; align-items:center; margin:0;">
+                        <input type="text" name="label" value="{step['label']}" placeholder="Label"
+                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; min-width:100px;">
+                </td>
+                <td>
+                        <input type="text" name="condition" value="{step['condition']}" placeholder="(none)"
+                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; width:120px;">
+                </td>
+                <td>
+                        <input type="text" name="config_json" value='{step['config_json']}' placeholder='{{}}'
+                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.75rem; font-family:monospace; min-width:200px;">
+                </td>
+                <td>
+                        <input type="hidden" name="enabled" value="0">
+                        <input type="checkbox" name="enabled" value="1" {'checked' if step['enabled'] else ''}
+                               style="width:auto; margin:0;">
+                </td>
+                <td style="white-space:nowrap;">
+                        <button type="submit" style="padding:2px 6px; font-size:0.7rem; margin:0;">Save</button>
+                    </form>
+                    <form method="post" action="/workflows/{workflow_id}/steps/{step_id}"
+                          style="display:inline; margin:0;"
+                          hx-delete="/workflows/{workflow_id}/steps/{step_id}"
+                          hx-confirm="Remove this step?">
+                        <button type="submit" class="outline secondary" style="padding:2px 6px; font-size:0.7rem; margin:0;">✕</button>
+                    </form>
+                </td>
+            </tr>""")
+    return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
+
+
+@router.delete("/workflows/{workflow_id}/steps/{step_id}")
+async def delete_workflow_step(request: Request, workflow_id: int, step_id: int):
+    await db.delete_workflow_step(step_id)
+    return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
+
+
+@router.post("/workflows/{workflow_id}/link-whitelist")
+async def link_whitelist(
+    request: Request,
+    workflow_id: int,
+    whitelist_id: int = Form(...),
+):
+    await db.link_whitelist_workflow(whitelist_id, workflow_id)
+    return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
+
+
+@router.post("/workflows/{workflow_id}/unlink-whitelist/{whitelist_id}")
+async def unlink_whitelist(request: Request, workflow_id: int, whitelist_id: int):
+    await db.unlink_whitelist_workflow(whitelist_id, workflow_id)
+    return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
 
 
 # ---- WebSocket routes ----

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% set active = "llm_logs" %}
+{% block title %}LLM Logs — MsgBot{% endblock %}
+{% block page_title %}LLM Logs{% endblock %}
+
+{% block content %}
+
+<!-- Stats cards -->
+<div class="card-grid">
+    <article class="stat-card">
+        <div class="stat-number">{{ llm_stats.cnt }}</div>
+        <div class="stat-label">Total Calls</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ llm_stats.total_prompt | default(0) }}</div>
+        <div class="stat-label">Prompt Tokens</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ llm_stats.total_completion | default(0) }}</div>
+        <div class="stat-label">Completion Tokens</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ llm_stats.total_tokens | default(0) }}</div>
+        <div class="stat-label">Total Tokens</div>
+    </article>
+</div>
+
+<div style="display:flex; justify-content:flex-end; margin-bottom:.5rem;">
+    <button class="outline secondary small"
+        hx-post="/config/clear/llm_logs"
+        hx-confirm="Clear all LLM logs?"
+        hx-swap="none"
+        onclick="setTimeout(()=>location.reload(),300)"
+    >Clear LLM Logs</button>
+</div>
+
+<!-- Log entries -->
+<div class="overflow-auto">
+<table>
+    <thead>
+        <tr>
+            <th style="width:140px;">Time</th>
+            <th>Model</th>
+            <th>Phone</th>
+            <th style="width:90px;">Tokens</th>
+            <th style="width:70px;">Latency</th>
+            <th>System Prompt</th>
+            <th>User Message</th>
+            <th>Assistant Reply</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in logs %}
+        <tr>
+            <td class="nowrap">{{ ts_to_str(entry.created_at) }}</td>
+            <td class="nowrap" style="font-size:.82rem;">{{ entry.model }}</td>
+            <td class="nowrap" style="font-size:.82rem;">{{ entry.sender_phone | format_phone if entry.sender_phone else entry.chat_id | format_phone }}</td>
+            <td class="nowrap" style="font-size:.78rem;">
+                <span title="Prompt tokens">⬆{{ entry.prompt_tokens }}</span>
+                <span title="Completion tokens">⬇{{ entry.completion_tokens }}</span>
+            </td>
+            <td class="nowrap" style="font-size:.82rem;">{{ entry.elapsed_ms }}ms</td>
+            <td>
+                <details>
+                    <summary style="font-size:.78rem; cursor:pointer;">{{ entry.system_prompt[:60] }}{% if entry.system_prompt|length > 60 %}…{% endif %}</summary>
+                    <pre style="white-space:pre-wrap; font-size:.75rem; max-height:200px; overflow:auto;">{{ entry.system_prompt }}</pre>
+                </details>
+            </td>
+            <td>
+                <details>
+                    <summary style="font-size:.78rem; cursor:pointer;">{{ entry.user_message[:80] }}{% if entry.user_message|length > 80 %}…{% endif %}</summary>
+                    <pre style="white-space:pre-wrap; font-size:.75rem; max-height:200px; overflow:auto;">{{ entry.user_message }}</pre>
+                </details>
+            </td>
+            <td>
+                <details>
+                    <summary style="font-size:.78rem; cursor:pointer;">{{ entry.assistant_reply[:80] }}{% if entry.assistant_reply|length > 80 %}…{% endif %}</summary>
+                    <pre style="white-space:pre-wrap; font-size:.75rem; max-height:200px; overflow:auto;">{{ entry.assistant_reply }}</pre>
+                </details>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="secondary" style="text-align:center;">No LLM calls logged yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% endblock %}

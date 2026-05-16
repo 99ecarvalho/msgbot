@@ -173,9 +173,17 @@ async def _step_llm(ctx: WorkflowContext, config: dict) -> tuple[str, str]:
 
     # Use forwarded handler if message is forwarded
     if ctx.is_forwarded:
-        response = await llm.process_forwarded_audio(input_text, prompt)
+        response = await llm.process_forwarded_audio(
+            input_text, prompt,
+            chat_id=ctx.chat.get("chat_id", ""),
+            sender_phone=ctx.sender_phone,
+        )
     else:
-        response = await llm.process_voice_message(input_text, prompt)
+        response = await llm.process_voice_message(
+            input_text, prompt,
+            chat_id=ctx.chat.get("chat_id", ""),
+            sender_phone=ctx.sender_phone,
+        )
 
     ctx.current_text = response
     ctx.llm_responses.append(response)
@@ -220,20 +228,31 @@ async def _step_reply_audio(ctx: WorkflowContext, config: dict) -> tuple[str, st
 
 
 async def _step_save(ctx: WorkflowContext, config: dict) -> tuple[str, str]:
-    """Save message to database with accumulated context."""
-    msg_id = await db.save_message(
-        ctx.chat["id"],
-        direction="in",
-        msg_type=ctx.msg_type,
-        content_text=ctx.original_text,
-        audio_path=ctx.audio_path if ctx.msg_type == "voice" else "",
-        transcription=ctx.transcription,
-        llm_response="\n---\n".join(ctx.llm_responses) if ctx.llm_responses else "",
-        sender_name=ctx.push_name,
-        sender_phone=ctx.sender_phone,
-        device=ctx.device,
-    )
-    ctx.message_id = msg_id
+    """Update the already-saved message with accumulated pipeline data (transcription, LLM response).
+    Also saves outgoing reply as a separate message."""
+    if ctx.message_id:
+        # Update the existing message with transcription + LLM data
+        updates: dict = {}
+        if ctx.transcription:
+            updates["transcription"] = ctx.transcription
+        if ctx.llm_responses:
+            updates["llm_response"] = "\n---\n".join(ctx.llm_responses)
+        if updates:
+            await db.update_message(ctx.message_id, **updates)
+    else:
+        # Fallback: insert if somehow no message_id (shouldn't happen)
+        ctx.message_id = await db.save_message(
+            ctx.chat["id"],
+            direction="in",
+            msg_type=ctx.msg_type,
+            content_text=ctx.original_text,
+            audio_path=ctx.audio_path if ctx.msg_type == "voice" else "",
+            transcription=ctx.transcription,
+            llm_response="\n---\n".join(ctx.llm_responses) if ctx.llm_responses else "",
+            sender_name=ctx.push_name,
+            sender_phone=ctx.sender_phone,
+            device=ctx.device,
+        )
 
     # Also save outgoing if we have LLM responses
     if ctx.llm_responses:
@@ -245,7 +264,7 @@ async def _step_save(ctx: WorkflowContext, config: dict) -> tuple[str, str]:
             audio_path=ctx.audio_path,
         )
 
-    return "saving context", f"message_id={msg_id}"
+    return "saving context", f"message_id={ctx.message_id}"
 
 
 _STEP_HANDLERS = {
@@ -267,7 +286,7 @@ async def execute_workflow(ctx: WorkflowContext, workflow: dict, steps: list[dic
 
     await db.save_log(
         "info",
-        f"▶ Starting workflow '{workflow['name']}' ({len(steps)} steps) for {ctx.push_name or ctx.phone}",
+        f"▶ Starting workflow '{workflow['name']}' ({len(steps)} steps) for {ctx.push_name or ctx.phone} [{ctx.sender_phone}] device={ctx.device or '?'}",
         source="workflow",
     )
 
@@ -351,7 +370,7 @@ async def execute_workflow(ctx: WorkflowContext, workflow: dict, steps: list[dic
 
     await db.save_log(
         "info",
-        f"✔ Workflow '{workflow['name']}' completed for {ctx.push_name or ctx.phone}",
+        f"✔ Workflow '{workflow['name']}' completed for {ctx.push_name or ctx.phone} [{ctx.sender_phone}]",
         source="workflow",
     )
 
@@ -389,9 +408,17 @@ async def process_message(
     # Log whitelist match
     await db.save_log(
         "info",
-        f"✅ Whitelist match for {push_name or phone} — entry #{wl_id} "
-        f"({whitelist_entry.get('filter_type', '?')}={whitelist_entry.get('value', '?')})",
+        f"✅ Whitelist match for {push_name or phone} [{sender_phone}] — entry #{wl_id} "
+        f"({whitelist_entry.get('filter_type', '?')}={whitelist_entry.get('value', '?')}) device={device or '?'}",
         source=platform,
+    )
+
+    # ---- Always save the incoming message ----
+    msg_id = await db.save_message(
+        chat["id"], "in", msg_type,
+        content_text=text, audio_path=audio_path,
+        sender_name=push_name, sender_phone=sender_phone,
+        device=device,
     )
 
     # Get workflows linked to this whitelist entry
@@ -409,15 +436,8 @@ async def process_message(
     if not workflows:
         await db.save_log(
             "warning",
-            f"No workflows available for {push_name or phone} — message will only be saved",
+            f"No workflows available for {push_name or phone} — message saved but not processed",
             source=platform,
-        )
-        # Still save the message even without workflows
-        await db.save_message(
-            chat["id"], "in", msg_type,
-            content_text=text, audio_path=audio_path,
-            sender_name=push_name, sender_phone=sender_phone,
-            device=device,
         )
         return
 
@@ -442,6 +462,7 @@ async def process_message(
             is_ptt=is_ptt,
             device=device,
             current_text=text,
+            message_id=msg_id,
         )
 
         try:

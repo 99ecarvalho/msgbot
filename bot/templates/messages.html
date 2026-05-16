@@ -38,9 +38,12 @@
             <th>Time</th>
             <th>Platform</th>
             <th>Chat</th>
+            <th>Phone</th>
             <th>Dir</th>
-            <th>Type</th>            <th></th>            <th>Content</th>
-            <th>Audio</th>
+            <th>Type</th>
+            <th>Device</th>
+            <th style="min-width:300px;">Content</th>
+            <th style="width:140px;">Audio</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -56,13 +59,13 @@
                     {% if msg.is_group %}
                         <span class="chat-type-tag group">group</span>
                         {{ msg.group_name or msg.chat_id }}
-                        {% if msg.effective_sender %}<br><span class="chat-sender">↳ {{ msg.effective_sender }}{% if msg.sender_phone %} ({{ msg.sender_phone }}){% endif %}</span>{% endif %}
+                        {% if msg.effective_sender %}<br><span class="chat-sender">↳ {{ msg.effective_sender }}</span>{% endif %}
                     {% else %}
                         {{ msg.display_name or msg.chat_id }}
-                        {% if msg.sender_phone %}<br><span class="chat-sender" style="font-size:.78rem; color:var(--muted-color);">{{ msg.sender_phone }}</span>{% endif %}
                     {% endif %}
                 </a>
             </td>
+            <td class="nowrap" style="font-size:.82rem;">{{ msg.effective_phone | format_phone }}</td>
             <td>
                 {% if msg.direction == 'in' %}
                     <span class="badge badge-in">IN</span>
@@ -71,15 +74,13 @@
                 {% endif %}
             </td>
             <td>{{ 'voice' if msg.msg_type == 'voice' else 'text' }}</td>
-            <td class="nowrap" title="{{ msg.device or '' }}">
+            <td class="nowrap" style="font-size:.82rem;" title="{{ msg.device or '' }}">
                 {% if msg.device == 'android' %}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3ddc84" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16V9a7 7 0 0 1 14 0v7"/><path d="M3 15v2"/><path d="M21 15v2"/><rect x="5" y="10" width="14" height="10" rx="2"/><circle cx="9" cy="7" r=".5" fill="#3ddc84"/><circle cx="15" cy="7" r=".5" fill="#3ddc84"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#3ddc84"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24C14.86 8.35 13.47 8.01 12 8.01s-2.86.34-4.47.9L5.65 5.67c-.19-.29-.56-.38-.85-.22-.31.16-.42.54-.26.85L6.4 9.48C3.3 11.25 1.28 14.44 1 18h22c-.28-3.56-2.3-6.75-5.4-8.52zM7 15.25a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5zm10 0a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5z"/></svg>
                 {% elif msg.device == 'ios' %}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.5 2 7 5 7 8v8a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4V8c0-3-1.5-6-5-6z"/><path d="M12 6v.01"/></svg>
+                    <svg width="12" height="14" viewBox="0 0 170 170" fill="#aaa"><path d="M150.4 130.2c-2.8 6.5-6.1 12.5-10 18-5.3 7.5-9.6 12.7-13 15.6-5.2 4.8-10.7 7.2-16.7 7.3-4.3 0-9.5-1.2-15.5-3.7-6.1-2.5-11.6-3.7-16.7-3.7-5.3 0-11 1.2-17.1 3.7-6.1 2.5-11 3.8-14.8 3.9-5.7.2-11.4-2.3-17-7.5-3.7-3.1-8.3-8.5-13.8-16.1-5.9-8.2-10.7-17.7-14.6-28.6C-3 108.2-5 97.7-5 87.5c0-11.7 2.5-21.8 7.6-30.3 4-6.8 9.3-12.1 16-16 6.7-3.9 13.9-5.9 21.7-6 4.6 0 10.5 1.4 17.9 4.2 7.4 2.8 12.1 4.2 14.2 4.2 1.6 0 6.9-1.6 15.8-4.9 8.5-3 15.6-4.3 21.4-3.8 15.8 1.3 27.7 7.6 35.5 19-14.1 8.6-21.1 20.6-21 36 .1 12 4.5 22 13.1 29.8 3.9 3.7 8.2 6.5 13 8.5-1 3-2.1 5.9-3.3 8.6zM115.6 3c0 9.4-3.4 18.2-10.2 26.3-8.2 9.6-18.1 15.2-28.8 14.3-.1-1.2-.2-2.4-.2-3.6 0-9 3.9-18.7 10.9-26.6 3.5-4 7.9-7.3 13.3-10 5.4-2.6 10.5-4.1 15.2-4.4.1 1.4.2 2.7.2 4z" transform="translate(5 0)"/></svg>
                 {% elif msg.device == 'web' %}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                {% elif msg.device %}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 {% endif %}
             </td>
             <td>
@@ -97,9 +98,17 @@
                     <span class="secondary">—</span>
                 {% endif %}
             </td>
-            <td>
+            <td style="max-width:160px;">
                 {% if msg.audio_path %}
-                    <audio controls preload="none" src="/audios/{{ msg.audio_path }}"></audio>
+                    <audio controls preload="none" src="/audios/{{ msg.audio_path }}" style="width:120px; height:32px;"></audio>
+                    {% if not msg.transcription %}
+                    <button class="outline small transcribe-btn"
+                        data-msg-id="{{ msg.id }}"
+                        onclick="transcribeAudio(this)"
+                        style="margin-top:.25rem; font-size:.7rem; padding:.15rem .4rem;">
+                        🎙 Transcribe
+                    </button>
+                    {% endif %}
                 {% else %}
                     —
                 {% endif %}
@@ -130,7 +139,7 @@
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="9">
+        <tr><td colspan="10">
             <div class="empty-state">
                 <div class="empty-icon">&mdash;</div>
                 <p>No messages found</p>
@@ -238,5 +247,34 @@
         }
     });
 })();
+
+async function transcribeAudio(btn) {
+    const msgId = btn.dataset.msgId;
+    btn.disabled = true;
+    btn.textContent = '⏳ Transcribing…';
+
+    try {
+        const resp = await fetch('/messages/' + msgId + '/transcribe', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            btn.textContent = '❌ ' + data.error;
+            btn.disabled = false;
+            return;
+        }
+        // Find the content cell (sibling before audio cell)
+        const row = btn.closest('tr');
+        const contentCell = row.querySelector('td:nth-last-child(3)');
+        if (contentCell && data.text) {
+            const p = document.createElement('p');
+            p.innerHTML = '<strong>Transcription:</strong> ' + data.text;
+            contentCell.prepend(p);
+        }
+        btn.textContent = '✅ Done';
+        setTimeout(function() { btn.remove(); }, 1500);
+    } catch (err) {
+        btn.textContent = '❌ Failed';
+        btn.disabled = false;
+    }
+}
 </script>
 {% endblock %}

@@ -57,6 +57,7 @@ async def _init_tables(db: aiosqlite.Connection):
             llm_response TEXT DEFAULT '',
             sender_name  TEXT DEFAULT '',       -- who sent the message (pushName / display)
             sender_phone TEXT DEFAULT '',       -- sender phone (esp. for group messages)
+            device       TEXT DEFAULT '',       -- android | ios | web | desktop | unknown
             created_at   REAL NOT NULL
         );
 
@@ -132,6 +133,23 @@ async def _init_tables(db: aiosqlite.Connection):
 
         CREATE INDEX IF NOT EXISTS idx_wf_logs_run ON workflow_logs(run_id);
         CREATE INDEX IF NOT EXISTS idx_wf_logs_msg ON workflow_logs(message_id);
+
+        CREATE TABLE IF NOT EXISTS llm_logs (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id        TEXT DEFAULT '',
+            sender_phone   TEXT DEFAULT '',
+            model          TEXT DEFAULT '',
+            system_prompt  TEXT DEFAULT '',
+            user_message   TEXT DEFAULT '',
+            assistant_reply TEXT DEFAULT '',
+            prompt_tokens  INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens   INTEGER DEFAULT 0,
+            elapsed_ms     INTEGER DEFAULT 0,
+            created_at     REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_llm_logs_created ON llm_logs(created_at);
     """)
     await db.commit()
 
@@ -150,6 +168,10 @@ async def _init_tables(db: aiosqlite.Connection):
         pass
     try:
         await db.execute("ALTER TABLE messages ADD COLUMN sender_phone TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE messages ADD COLUMN device TEXT DEFAULT ''")
     except Exception:
         pass
     await db.commit()
@@ -209,6 +231,12 @@ async def get_all_chats() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def get_chat(chat_rowid: int) -> dict | None:
+    db = await get_db()
+    rows = await db.execute_fetchall("SELECT * FROM chats WHERE id=?", (chat_rowid,))
+    return dict(rows[0]) if rows else None
+
+
 # ---- Message helpers ----
 
 async def save_message(
@@ -221,15 +249,30 @@ async def save_message(
     llm_response: str = "",
     sender_name: str = "",
     sender_phone: str = "",
+    device: str = "",
 ) -> int:
     db = await get_db()
     now = time.time()
     cursor = await db.execute(
-        "INSERT INTO messages (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, now),
+        "INSERT INTO messages (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, device, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (chat_rowid, direction, msg_type, content_text, audio_path, transcription, llm_response, sender_name, sender_phone, device, now),
     )
     await db.commit()
     return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def update_message(msg_id: int, **kwargs):
+    db = await get_db()
+    sets = ", ".join(f"{k}=?" for k in kwargs)
+    vals = list(kwargs.values()) + [msg_id]
+    await db.execute(f"UPDATE messages SET {sets} WHERE id=?", vals)
+    await db.commit()
+
+
+async def get_message(msg_id: int) -> dict | None:
+    db = await get_db()
+    rows = await db.execute_fetchall("SELECT * FROM messages WHERE id=?", (msg_id,))
+    return dict(rows[0]) if rows else None
 
 
 async def get_messages(chat_rowid: int | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
@@ -385,6 +428,54 @@ async def get_logs(limit: int = 200, level: str | None = None) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ---- LLM log helpers ----
+
+async def save_llm_log(
+    model: str = "",
+    system_prompt: str = "",
+    user_message: str = "",
+    assistant_reply: str = "",
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int = 0,
+    elapsed_ms: int = 0,
+    chat_id: str = "",
+    sender_phone: str = "",
+) -> int:
+    db = await get_db()
+    cursor = await db.execute(
+        "INSERT INTO llm_logs (chat_id, sender_phone, model, system_prompt, user_message, assistant_reply, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (chat_id, sender_phone, model, system_prompt, user_message, assistant_reply, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, time.time()),
+    )
+    await db.commit()
+    return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def get_llm_logs(limit: int = 100) -> list[dict]:
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT * FROM llm_logs ORDER BY created_at DESC LIMIT ?", (limit,)
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_llm_stats() -> dict:
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT COUNT(*) as cnt, COALESCE(SUM(prompt_tokens),0) as total_prompt, "
+        "COALESCE(SUM(completion_tokens),0) as total_completion, "
+        "COALESCE(SUM(total_tokens),0) as total_tokens FROM llm_logs"
+    )
+    r = dict(rows[0])
+    return r
+
+
+async def clear_llm_logs():
+    db = await get_db()
+    await db.execute("DELETE FROM llm_logs")
+    await db.commit()
+
+
 # ---- Whitelist helpers ----
 
 async def add_whitelist_entry(
@@ -428,7 +519,8 @@ async def is_whitelisted(platform: str, chat_id: str, display_name: str = "") ->
     db = await get_db()
     rows = await db.execute_fetchall("SELECT * FROM whitelist WHERE enabled=1")
     if not rows:
-        return {"id": 0, "platform": "", "filter_type": "open", "value": "*", "enabled": 1, "notes": "open mode"}
+        # No whitelist entries → deny by default (workflows won't run)
+        return None
     for row in rows:
         r = dict(row)
         # Platform filter
@@ -669,6 +761,7 @@ async def clear_all():
     await db.execute("DELETE FROM messages")
     await db.execute("DELETE FROM chats")
     await db.execute("DELETE FROM logs")
+    await db.execute("DELETE FROM llm_logs")
     await db.execute("DELETE FROM whitelist")
     await db.execute("DELETE FROM config")
     await db.commit()

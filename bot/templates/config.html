@@ -73,7 +73,7 @@
                         <a href="/messages/{{ chat.id }}">{{ chat.display_name or '(no name)' }}</a>
                     {% endif %}
                 </td>
-                <td class="nowrap text-mono">{{ chat.chat_id }}</td>
+                <td class="nowrap text-mono">{{ chat.chat_id | format_phone }}</td>
                 <td>
                     <textarea
                         form="chat-form-{{ chat.id }}"
@@ -114,7 +114,7 @@
 <!-- Access Control / Whitelist -->
 <article>
     <header><h3>Access Control (Whitelist)</h3></header>
-    <p class="secondary">When the whitelist is <strong>empty</strong>, all messages are allowed through. Once you add at least one entry, only matching contacts/channels will receive responses. All messages are still logged regardless.</p>
+    <p class="secondary">Workflows <strong>only run for whitelisted</strong> contacts/channels. All messages are still logged regardless. Add entries below to enable workflow processing for specific contacts.</p>
 
     <!-- Add new entry -->
     <form hx-post="/config/whitelist" hx-target="#whitelist-body" hx-swap="innerHTML">

@@ -71,53 +71,109 @@
 <div class="section-title">Activity</div>
 <div class="card-grid">
     <article class="stat-card">
-        <div class="stat-number">{{ total_chats }}</div>
-        <div class="stat-label">Active Chats</div>
+        <div class="stat-number">{{ stats.total_messages }}</div>
+        <div class="stat-label">Total Messages</div>
     </article>
     <article class="stat-card">
-        <div class="stat-number">{{ recent_messages | length }}</div>
-        <div class="stat-label">Recent Messages</div>
+        <div class="stat-number">{{ stats.messages_in }}</div>
+        <div class="stat-label">Incoming</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.messages_out }}</div>
+        <div class="stat-label">Outgoing</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.total_chats }}</div>
+        <div class="stat-label">Total Chats</div>
     </article>
 </div>
 
-<div class="section-title">Recent Messages</div>
+<div class="card-grid">
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.messages_voice }}</div>
+        <div class="stat-label">Voice Messages</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.messages_text }}</div>
+        <div class="stat-label">Text Messages</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.transcriptions }}</div>
+        <div class="stat-label">Transcriptions</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.llm_responses }}</div>
+        <div class="stat-label">LLM Responses</div>
+    </article>
+</div>
+
+<div class="card-grid">
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.whitelist_active }}</div>
+        <div class="stat-label">Whitelist Entries</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.blocked_messages }}</div>
+        <div class="stat-label">Blocked Messages</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.chats_group }}</div>
+        <div class="stat-label">Groups</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.chats_dm }}</div>
+        <div class="stat-label">Direct Chats</div>
+    </article>
+</div>
+
+<div class="card-grid">
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.audio_count }}</div>
+        <div class="stat-label">Audio Files</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ stats.audio_size_mb }} MB</div>
+        <div class="stat-label">Audio Storage</div>
+    </article>
+    {% for plat, cnt in stats.by_platform.items() %}
+    <article class="stat-card">
+        <div class="stat-number">{{ cnt }}</div>
+        <div class="stat-label">{{ plat | capitalize }} Msgs</div>
+    </article>
+    {% endfor %}
+</div>
+
+{% if stats.top_chats %}
+<div class="section-title">Top Chats</div>
 <div class="overflow-auto">
 <table>
     <thead>
-        <tr>
-            <th>Time</th>
-            <th>Platform</th>
-            <th>Chat</th>
-            <th>Direction</th>
-            <th>Type</th>
-            <th>Preview</th>
-        </tr>
+        <tr><th>Chat</th><th>Platform</th><th>Type</th><th>Messages</th></tr>
     </thead>
     <tbody>
-        {% for msg in recent_messages %}
+        {% for c in stats.top_chats %}
         <tr>
-            <td class="nowrap">{{ ts_to_str(msg.created_at) }}</td>
-            <td><span class="badge badge-{{ msg.platform }}">{{ msg.platform }}</span></td>
-            <td><a href="/messages/{{ msg.chat_rowid }}">{{ msg.display_name or msg.chat_id }}</a></td>
-            <td>
-                {% if msg.direction == 'in' %}
-                    <span class="badge badge-in">IN</span>
-                {% else %}
-                    <span class="badge badge-out">OUT</span>
-                {% endif %}
-            </td>
-            <td>{{ 'voice' if msg.msg_type == 'voice' else 'text' }}</td>
-            <td>{{ (msg.transcription or msg.content_text or '')[:80] }}{% if (msg.transcription or msg.content_text or '')|length > 80 %}&hellip;{% endif %}</td>
+            <td><a href="/messages/{{ c.id }}">{{ c.group_name or c.display_name or c.chat_id }}</a></td>
+            <td><span class="badge badge-{{ c.platform }}">{{ c.platform }}</span></td>
+            <td>{{ 'group' if c.is_group else 'DM' }}</td>
+            <td>{{ c.cnt }}</td>
         </tr>
-        {% else %}
-        <tr><td colspan="6">
-            <div class="empty-state">
-                <div class="empty-icon">&mdash;</div>
-                <p>No messages yet</p>
-            </div>
-        </td></tr>
         {% endfor %}
     </tbody>
 </table>
 </div>
+{% endif %}
+
+{% if stats.daily %}
+<div class="section-title">Messages per Day (14d)</div>
+<div class="daily-chart">
+    {% set max_cnt = stats.daily | map(attribute='cnt') | max %}
+    {% for day in stats.daily %}
+    <div class="daily-bar-wrap" title="{{ day.day }}: {{ day.cnt }}">
+        <div class="daily-bar" style="height: {{ (day.cnt / max_cnt * 100) if max_cnt else 0 }}%"></div>
+        <div class="daily-label">{{ day.day[-5:] }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

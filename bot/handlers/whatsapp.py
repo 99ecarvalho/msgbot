@@ -15,24 +15,29 @@ from bot.utils import save_audio
 log = structlog.get_logger("handlers.whatsapp")
 
 
-def _detect_device(message_id: str) -> str:
-    """Detect sender device from WhatsApp message ID pattern (Baileys convention).
+def _detect_device(message_id: str, source: str = "") -> str:
+    """Detect sender device.
 
-    - Android: starts with '3EB0' (hex, uppercase)
-    - iOS: 32 chars, all uppercase hex
-    - Web/Desktop: starts with 'BAE5'
-    - Unknown otherwise
+    Prefers the 'source' field from Evolution API payload (web, android, ios, etc.).
+    Falls back to message ID pattern heuristics (Baileys convention).
     """
+    # Evolution API provides the actual device in the 'source' field
+    if source:
+        s = source.lower()
+        if s in ("android", "ios", "web", "desktop"):
+            return s
+        if "iphone" in s or "ipad" in s:
+            return "ios"
+    # Fallback: infer from message ID pattern
     if not message_id:
-        return "unknown"
+        return ""
     if message_id.startswith("3EB0"):
         return "android"
     if message_id.startswith("BAE5"):
         return "web"
-    # iOS message IDs are typically 20+ uppercase alphanumeric, no '3EB0' or 'BAE5' prefix
     if len(message_id) >= 20 and message_id.isupper() and message_id.isalnum():
         return "ios"
-    return "unknown"
+    return ""
 
 
 def _get_response_mode(chat: dict) -> str:
@@ -80,10 +85,10 @@ async def _handle_messages_upsert(payload: dict):
         log.debug("skipping_own_message", reason="participant_matches_instance")
         return  # Skip bot's own messages in groups
 
-    # Extra guard: check status field (some Evolution API versions set this)
-    status = data.get("status")
-    if status and status in ("SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"):
-        return  # Skip delivery/read receipts
+    # Skip pure status updates (no message content)
+    msg_content = data.get("message", {})
+    if not msg_content:
+        return
 
     remote_jid = key.get("remoteJid", "")
     if not remote_jid:
@@ -97,24 +102,38 @@ async def _handle_messages_upsert(payload: dict):
     is_group = remote_jid.endswith("@g.us")
     group_name = ""
     sender_phone = ""
+
+    # Top-level 'sender' field has the real phone (works even with LID participants)
+    # NOTE: 'sender' is at the payload root, NOT inside data
+    top_sender = payload.get("sender", "") or data.get("sender", "")
+    top_sender_phone = top_sender.split("@")[0] if "@" in top_sender else ""
+
     if is_group:
-        # For groups: group_name comes from Evolution API, NOT fallback to push_name
+        # For groups: group_name comes from Evolution API webhook data
         group_name = data.get("groupName", "") or data.get("groupSubject", "")
-        # Sender phone from participant JID (e.g. 5511999@s.whatsapp.net)
-        sender_phone = participant.split("@")[0] if participant else ""
+        # Prefer top-level sender phone; fall back to participant JID (skip @lid)
+        if top_sender_phone:
+            sender_phone = top_sender_phone
+        elif participant and "@lid" not in participant:
+            sender_phone = participant.split("@")[0]
     else:
-        # For DMs: sender phone = the remote JID phone
-        sender_phone = phone
+        # For DMs: sender phone = top-level sender or remote JID phone
+        sender_phone = top_sender_phone or phone
 
     chat = await db.get_or_create_chat(
-        "whatsapp", phone, display_name=push_name,
+        "whatsapp", phone,
+        display_name=group_name if is_group else push_name,
         group_name=group_name, is_group=is_group,
     )
+
+    # If webhook didn't include group name, use DB-cached name
+    if is_group and not group_name:
+        group_name = chat.get("group_name", "")
 
     message = data.get("message", {})
     message_type = data.get("messageType", "")
     message_id = key.get("id", "")
-    device = _detect_device(message_id)
+    device = _detect_device(message_id, source=data.get("source", ""))
 
     # Handle audio/voice messages
     if message_type in ("audioMessage", "pttMessage") or "audioMessage" in message:
@@ -159,7 +178,7 @@ async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_p
             sender_name=push_name, sender_phone=sender_phone,
             device=device,
         )
-        await db.save_log("info", f"Blocked audio from {push_name} ({phone}) — not whitelisted", source="whatsapp")
+        await db.save_log("info", f"Blocked audio from {push_name} ({phone}) [{sender_phone}] device={device} — not whitelisted", source="whatsapp")
         log.info("whatsapp_blocked", phone=phone, push_name=push_name, reason="not_whitelisted")
         return
 
@@ -189,7 +208,7 @@ async def _handle_text_message(chat: dict, phone: str, push_name: str, sender_ph
         await db.save_message(chat["id"], "in", "text", content_text=text,
                               sender_name=push_name, sender_phone=sender_phone,
                               device=device)
-        await db.save_log("info", f"Blocked text from {push_name} ({phone}) — not whitelisted", source="whatsapp")
+        await db.save_log("info", f"Blocked text from {push_name} ({phone}) [{sender_phone}] device={device} — not whitelisted", source="whatsapp")
         log.info("whatsapp_blocked", phone=phone, push_name=push_name, reason="not_whitelisted")
         return
 

@@ -108,6 +108,8 @@ async def send_text(to: str, text: str, name: str | None = None) -> dict:
     payload = {"number": to, "text": text}
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(url, json=payload, headers=_headers())
+        if resp.status_code >= 400:
+            log.error("send_text_failed", status=resp.status_code, body=resp.text, to=to)
         resp.raise_for_status()
     return resp.json()
 
@@ -123,6 +125,8 @@ async def send_audio(to: str, audio_bytes: bytes, name: str | None = None) -> di
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, json=payload, headers=_headers())
+        if resp.status_code >= 400:
+            log.error("send_audio_failed", status=resp.status_code, body=resp.text, to=to)
         resp.raise_for_status()
     return resp.json()
 

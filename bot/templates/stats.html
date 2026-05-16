@@ -133,7 +133,7 @@
                     {% endif %}
                     </a>
                 </td>
-                <td class="nowrap text-mono">{{ chat.chat_id }}</td>
+                <td class="nowrap text-mono">{{ chat.chat_id | format_phone }}</td>
                 <td><a href="/messages/{{ chat.id }}"><strong>{{ chat.cnt }}</strong></a></td>
             </tr>
             {% endfor %}
