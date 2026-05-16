@@ -174,6 +174,10 @@ async def _init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE messages ADD COLUMN device TEXT DEFAULT ''")
     except Exception:
         pass
+    try:
+        await db.execute("ALTER TABLE whitelist ADD COLUMN display_name TEXT DEFAULT ''")
+    except Exception:
+        pass
     await db.commit()
 
     # Seed default workflow if none exist
@@ -479,13 +483,13 @@ async def clear_llm_logs():
 # ---- Whitelist helpers ----
 
 async def add_whitelist_entry(
-    filter_type: str, value: str, platform: str = "", notes: str = ""
+    filter_type: str, value: str, platform: str = "", notes: str = "", display_name: str = ""
 ) -> int:
     db = await get_db()
     now = time.time()
     cursor = await db.execute(
-        "INSERT INTO whitelist (platform, filter_type, value, enabled, notes, created_at) VALUES (?,?,?,1,?,?)",
-        (platform, filter_type, value, notes, now),
+        "INSERT INTO whitelist (platform, filter_type, value, enabled, notes, display_name, created_at) VALUES (?,?,?,1,?,?,?)",
+        (platform, filter_type, value, notes, display_name, now),
     )
     await db.commit()
     return cursor.lastrowid  # type: ignore[return-value]
@@ -509,7 +513,7 @@ async def get_whitelist() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def is_whitelisted(platform: str, chat_id: str, display_name: str = "") -> dict | None:
+async def is_whitelisted(platform: str, chat_id: str, display_name: str = "", sender_phone: str = "") -> dict | None:
     """Check if a contact/channel is whitelisted.
 
     If no enabled whitelist entries exist, ALL messages are allowed (open mode).
@@ -528,7 +532,7 @@ async def is_whitelisted(platform: str, chat_id: str, display_name: str = "") ->
             continue
         ft = r["filter_type"]
         val = r["value"]
-        if ft == "phone" and val == chat_id:
+        if ft == "phone" and (val == chat_id or (sender_phone and val == sender_phone)):
             return r
         if ft == "contact_name" and display_name and val.lower() in display_name.lower():
             return r

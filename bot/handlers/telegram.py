@@ -16,6 +16,7 @@ from telegram.ext import (
 from bot.config import settings
 from bot import db
 from bot.engine import TelegramSender, process_message
+from bot.services import transcriber
 from bot.utils import save_audio
 
 log = structlog.get_logger("handlers.telegram")
@@ -126,13 +127,22 @@ async def _handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     audio_path = await save_audio(chat_id, "in", audio_bytes, ext)
 
+    # Auto-transcribe (local Whisper, no cost)
+    transcription = ""
+    try:
+        result = await transcriber.transcribe(audio_bytes, filename="audio.ogg", language=None)
+        transcription = result.get("text", "").strip()
+    except Exception as e:
+        log.error("auto_transcribe_failed", chat_id=chat_id, error=str(e))
+
     # Whitelist check
     wl_entry = await db.is_whitelisted("telegram", chat_id, display_name)
     if not wl_entry:
         await db.save_message(
             chat["id"], "in", "voice",
             audio_path=audio_path,
-            content_text="[BLOCKED - not whitelisted]",
+            content_text="",
+            transcription=transcription,
         )
         await db.save_log("info", f"Blocked audio from {display_name} ({chat_id}) — not whitelisted", source="telegram")
         log.info("telegram_blocked", chat_id=chat_id, display_name=display_name, reason="not_whitelisted")

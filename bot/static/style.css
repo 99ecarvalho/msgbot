@@ -359,7 +359,7 @@ button, [type="submit"], [type="button"] {
 /* ===== Audio ===== */
 audio {
     height: 32px;
-    min-width: 180px;
+    max-width: 140px;
 }
 
 /* ===== Notice ===== */

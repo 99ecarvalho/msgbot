@@ -64,15 +64,12 @@
             }
         }
 
-        container.appendChild(entry);
+        container.prepend(entry);
 
         // Keep max 500 entries
         while (container.children.length > 500) {
-            container.removeChild(container.firstChild);
+            container.removeChild(container.lastChild);
         }
-
-        // Auto-scroll
-        container.scrollTop = container.scrollHeight;
     };
 
     ws.onerror = function() {

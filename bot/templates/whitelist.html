@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set active = "whitelist" %}
+{% block title %}Access Control — MsgBot{% endblock %}
+{% block page_title %}Access Control (Whitelist){% endblock %}
+
+{% block content %}
+
+<p class="secondary">Workflows <strong>only run for whitelisted</strong> contacts/channels. All messages are still logged regardless. Add entries below to enable workflow processing for specific contacts.</p>
+
+<!-- Add new entry -->
+<article>
+    <header><h3>Add Entry</h3></header>
+    <form hx-post="/whitelist" hx-target="#whitelist-body" hx-swap="innerHTML">
+        <div class="grid">
+            <div>
+                <label for="wl-filter-type">Filter Type</label>
+                <select name="filter_type" id="wl-filter-type" required>
+                    <option value="phone">Phone Number</option>
+                    <option value="contact_name">Contact Name</option>
+                    <option value="channel">Channel / Group</option>
+                </select>
+            </div>
+            <div>
+                <label for="wl-platform">Platform</label>
+                <select name="platform" id="wl-platform">
+                    <option value="">Any</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="whatsapp">WhatsApp</option>
+                </select>
+            </div>
+            <div>
+                <label for="wl-value">Value</label>
+                <input type="text" name="value" id="wl-value" placeholder="e.g. 5511999..." required>
+            </div>
+            <div>
+                <label for="wl-notes">Notes</label>
+                <input type="text" name="notes" id="wl-notes" placeholder="optional">
+            </div>
+        </div>
+        <button type="submit" class="outline">+ Add Whitelist Entry</button>
+    </form>
+</article>
+
+<!-- Whitelist table -->
+<div class="overflow-auto">
+<table>
+    <thead>
+        <tr>
+            <th>Type</th>
+            <th>Platform</th>
+            <th>Name</th>
+            <th>Value</th>
+            <th>Notes</th>
+            <th>Enabled</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody id="whitelist-body">
+        {% include "_whitelist_rows.html" %}
+    </tbody>
+</table>
+</div>
+
+{% endblock %}

@@ -10,6 +10,7 @@ from bot.config import settings
 from bot import db
 from bot.engine import WhatsAppSender, process_message
 from bot.services import evolution
+from bot.services import transcriber
 from bot.utils import save_audio
 
 log = structlog.get_logger("handlers.whatsapp")
@@ -168,13 +169,22 @@ async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_p
     # Save incoming audio (log everything regardless of whitelist)
     audio_path = await save_audio(phone, "in", audio_bytes, "ogg")
 
+    # Auto-transcribe (local Whisper, no cost)
+    transcription = ""
+    try:
+        result = await transcriber.transcribe(audio_bytes, filename="audio.ogg", language=None)
+        transcription = result.get("text", "").strip()
+    except Exception as e:
+        log.error("auto_transcribe_failed", phone=phone, error=str(e))
+
     # Whitelist check
-    wl_entry = await db.is_whitelisted("whatsapp", phone, push_name or group_name)
+    wl_entry = await db.is_whitelisted("whatsapp", phone, push_name or group_name, sender_phone=sender_phone)
     if not wl_entry:
         await db.save_message(
             chat["id"], "in", "voice",
             audio_path=audio_path,
-            content_text="[BLOCKED - not whitelisted]",
+            content_text="",
+            transcription=transcription,
             sender_name=push_name, sender_phone=sender_phone,
             device=device,
         )
@@ -203,7 +213,7 @@ async def _handle_text_message(chat: dict, phone: str, push_name: str, sender_ph
         return
 
     # Whitelist check
-    wl_entry = await db.is_whitelisted("whatsapp", phone, push_name or group_name)
+    wl_entry = await db.is_whitelisted("whatsapp", phone, push_name or group_name, sender_phone=sender_phone)
     if not wl_entry:
         await db.save_message(chat["id"], "in", "text", content_text=text,
                               sender_name=push_name, sender_phone=sender_phone,

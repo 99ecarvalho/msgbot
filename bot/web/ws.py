@@ -44,7 +44,7 @@ async def ws_logs(websocket: WebSocket):
     try:
         # Send recent logs on connect
         recent = await db.get_logs(limit=50)
-        for entry in reversed(recent):
+        for entry in recent:
             await websocket.send_text(json.dumps({
                 "level": entry["level"],
                 "source": entry["source"],

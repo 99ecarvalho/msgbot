@@ -67,13 +67,18 @@
                 <td>{% if chat.is_group %}<span class="chat-type-tag group">group</span>{% else %}<span class="chat-type-tag dm">dm</span>{% endif %}</td>
                 <td>
                     {% if chat.is_group %}
-                        <a href="/messages/{{ chat.id }}">{{ chat.group_name or '(unnamed group)' }}</a>
-                        {% if chat.display_name %}<br><span class="chat-sender">↳ {{ chat.display_name }}</span>{% endif %}
+                        <a href="/messages/{{ chat.id }}">{{ chat.group_name or chat.display_name or '(unnamed group)' }}</a>
                     {% else %}
-                        <a href="/messages/{{ chat.id }}">{{ chat.display_name or '(no name)' }}</a>
+                        <a href="/messages/{{ chat.id }}">{{ chat.display_name or chat.chat_id | format_phone_plain }}</a>
                     {% endif %}
                 </td>
-                <td class="nowrap text-mono">{{ chat.chat_id | format_phone }}</td>
+                <td class="nowrap text-mono">
+                    {% if chat.is_group %}
+                        {{ chat.chat_id }}
+                    {% else %}
+                        {{ chat.chat_id | format_phone }}
+                    {% endif %}
+                </td>
                 <td>
                     <textarea
                         form="chat-form-{{ chat.id }}"
@@ -109,86 +114,6 @@
     {% else %}
     <p class="secondary">No chats yet. Start chatting to see per-chat configuration here.</p>
     {% endif %}
-</article>
-
-<!-- Access Control / Whitelist -->
-<article>
-    <header><h3>Access Control (Whitelist)</h3></header>
-    <p class="secondary">Workflows <strong>only run for whitelisted</strong> contacts/channels. All messages are still logged regardless. Add entries below to enable workflow processing for specific contacts.</p>
-
-    <!-- Add new entry -->
-    <form hx-post="/config/whitelist" hx-target="#whitelist-body" hx-swap="innerHTML">
-        <div class="grid">
-            <div>
-                <label for="wl-filter-type">Filter Type</label>
-                <select name="filter_type" id="wl-filter-type" required>
-                    <option value="phone">Phone Number</option>
-                    <option value="contact_name">Contact Name</option>
-                    <option value="channel">Channel / Group</option>
-                </select>
-            </div>
-            <div>
-                <label for="wl-platform">Platform</label>
-                <select name="platform" id="wl-platform">
-                    <option value="">Any</option>
-                    <option value="telegram">Telegram</option>
-                    <option value="whatsapp">WhatsApp</option>
-                </select>
-            </div>
-            <div>
-                <label for="wl-value">Value</label>
-                <input type="text" name="value" id="wl-value" placeholder="e.g. +5511999..." required>
-            </div>
-            <div>
-                <label for="wl-notes">Notes</label>
-                <input type="text" name="notes" id="wl-notes" placeholder="optional">
-            </div>
-        </div>
-        <button type="submit" class="outline">+ Add Whitelist Entry</button>
-    </form>
-
-    <div class="overflow-auto" style="margin-top: 1rem;">
-    <table>
-        <thead>
-            <tr>
-                <th>Type</th>
-                <th>Platform</th>
-                <th>Value</th>
-                <th>Notes</th>
-                <th>Enabled</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody id="whitelist-body">
-            {% for e in whitelist %}
-            <tr>
-                <td>{{ e.filter_type }}</td>
-                <td>{{ e.platform or 'any' }}</td>
-                <td>{{ e.value }}</td>
-                <td>{{ e.notes }}</td>
-                <td>
-                    <span style="cursor:pointer"
-                        hx-post="/config/whitelist/{{ e.id }}/toggle"
-                        hx-target="#whitelist-body"
-                        hx-swap="innerHTML"
-                    >{% if e.enabled %}✅{% else %}❌{% endif %}</span>
-                </td>
-                <td>
-                    <button class="outline small"
-                        hx-delete="/config/whitelist/{{ e.id }}"
-                        hx-target="#whitelist-body"
-                        hx-swap="innerHTML"
-                        hx-confirm="Remove this entry?"
-                    >Remove</button>
-                </td>
-            </tr>
-            {% endfor %}
-            {% if not whitelist %}
-            <tr><td colspan="6" class="secondary">No whitelist entries. All incoming messages will be logged but not responded to.</td></tr>
-            {% endif %}
-        </tbody>
-    </table>
-    </div>
 </article>
 
 <!-- Database Maintenance -->

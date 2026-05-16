@@ -11,6 +11,8 @@ from fastapi import APIRouter, Request, WebSocket, Form
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from markupsafe import Markup
+
 from bot.config import settings
 from bot import db
 from bot.services import transcriber as transcriber_svc
@@ -36,22 +38,74 @@ templates.env.globals["ts_to_str"] = _ts_to_str
 templates.env.globals["now"] = lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _format_phone(value: str) -> str:
+def _is_phone(digits: str) -> bool:
+    """Check if a digit string looks like a real phone number (not a WhatsApp LID)."""
+    return digits.isdigit() and 10 <= len(digits) <= 13
+
+
+def _format_phone(value: str) -> Markup:
     """Convert WhatsApp JID to human-readable phone or short ID."""
     if not value:
-        return ""
+        return Markup("")
     # Strip @s.whatsapp.net → phone number
     if "@s.whatsapp.net" in value:
-        return "+" + value.split("@")[0]
-    # Strip @g.us → group JID (just the numeric part)
-    if "@g.us" in value:
+        digits = value.split("@")[0]
+    elif "@g.us" in value:
+        return Markup(value.split("@")[0])
+    else:
+        digits = value.lstrip("+")
+
+    # Brazilian numbers: 55 + 2-digit area + 8-9 digit number
+    if digits.startswith("55") and len(digits) in (12, 13):
+        area = digits[2:4]
+        number = digits[4:]
+        if len(number) == 9:
+            formatted = f"{number[:5]}-{number[5:]}"
+        else:
+            formatted = f"{number[:4]}-{number[4:]}"
+        return Markup(
+            f'<span style="font-size:.78em;opacity:.7">+55</span> {area} {formatted}'
+        )
+
+    # Only add + for plausible phone numbers (max 13 digits)
+    if _is_phone(digits):
+        return Markup(f"+{digits}")
+
+    return Markup(digits)
+
+
+def _format_phone_plain(value: str) -> str:
+    """Plain-text phone formatting (for <option> elements, no HTML)."""
+    if not value:
+        return ""
+    if "@s.whatsapp.net" in value:
+        digits = value.split("@")[0]
+    elif "@g.us" in value:
         return value.split("@")[0]
-    # Already a phone number or Telegram ID
-    return value
+    else:
+        digits = value.lstrip("+")
+
+    if digits.startswith("55") and len(digits) in (12, 13):
+        area = digits[2:4]
+        number = digits[4:]
+        if len(number) == 9:
+            formatted = f"{number[:5]}-{number[5:]}"
+        else:
+            formatted = f"{number[:4]}-{number[4:]}"
+        return f"+55 {area} {formatted}"
+
+    # Only add + for plausible phone numbers (max 13 digits)
+    if _is_phone(digits):
+        return f"+{digits}"
+
+    return digits
 
 
 templates.env.filters["format_phone"] = _format_phone
 templates.env.globals["format_phone"] = _format_phone
+templates.env.filters["format_phone_plain"] = _format_phone_plain
+templates.env.globals["format_phone_plain"] = _format_phone_plain
+templates.env.globals["is_phone"] = lambda v: _is_phone(v.split("@")[0] if "@" in v else v.lstrip("+"))
 
 
 # ---- Dashboard ----
@@ -69,6 +123,7 @@ async def dashboard(request: Request):
     # Stats
     all_msgs = await db.get_messages(limit=10)
     all_chats = await db.get_all_chats()
+    stats = await db.get_stats()
 
     tg_ok = bool(settings.telegram_bot_token)
 
@@ -80,6 +135,7 @@ async def dashboard(request: Request):
         "telegram_configured": tg_ok,
         "recent_messages": all_msgs,
         "total_chats": len(all_chats),
+        "stats": stats,
     })
 
 
@@ -126,6 +182,10 @@ async def messages_page(request: Request, platform: str = "", chat_id: str = "",
 
     msgs = await db.get_messages(chat_rowid=chat_rowid, limit=limit)
 
+    # Filter by platform if set (and no specific chat selected)
+    if platform and not chat_rowid:
+        msgs = [m for m in msgs if m.get("platform") == platform]
+
     # Optional filter: exclude blocked messages
     if whitelisted == "1":
         msgs = [m for m in msgs if "[BLOCKED" not in (m.get("content_text") or "")]
@@ -162,13 +222,11 @@ async def chat_thread(request: Request, chat_rowid: int):
 async def config_page(request: Request):
     cfg = await db.get_all_config()
     chats = await db.get_all_chats()
-    whitelist = await db.get_whitelist()
 
     return templates.TemplateResponse("config.html", {
         "request": request,
         "config": cfg,
         "chats": chats,
-        "whitelist": whitelist,
         "defaults": {
             "default_system_prompt": settings.default_system_prompt,
             "response_mode": settings.response_mode,
@@ -214,17 +272,17 @@ async def save_chat_config(
 
 # ---- Whitelist ----
 
-@router.get("/config/whitelist", response_class=HTMLResponse)
-async def whitelist_fragment(request: Request):
-    """HTMX fragment returning just the whitelist table rows."""
+@router.get("/whitelist", response_class=HTMLResponse)
+async def whitelist_page(request: Request):
+    """Whitelist management page."""
     entries = await db.get_whitelist()
-    return templates.TemplateResponse("_whitelist_rows.html", {
+    return templates.TemplateResponse("whitelist.html", {
         "request": request,
         "whitelist": entries,
     })
 
 
-@router.post("/config/whitelist")
+@router.post("/whitelist")
 async def add_whitelist(
     request: Request,
     filter_type: str = Form(...),
@@ -242,7 +300,7 @@ async def add_whitelist(
     if hx_target == "wl-toast":
         return HTMLResponse(f'<div class="notice">{value} added to whitelist</div>')
 
-    # Return updated list for config page
+    # Return updated list
     entries = await db.get_whitelist()
     return templates.TemplateResponse("_whitelist_rows.html", {
         "request": request,
@@ -265,18 +323,19 @@ async def quick_whitelist(request: Request):
     existing = await db.get_whitelist()
     for e in existing:
         if e["filter_type"] == "phone" and e["value"] == phone:
-            return HTMLResponse(f'<span class="notice">{phone} already whitelisted</span>')
+            return HTMLResponse(f'<span class="notice">{display_name or phone} already whitelisted</span>')
 
     await db.add_whitelist_entry(
         filter_type="phone",
         value=phone,
         platform=platform,
-        notes=f"Quick-added from messages ({display_name})" if display_name else "Quick-added from messages",
+        display_name=display_name,
+        notes="Quick-added from messages",
     )
-    return HTMLResponse(f'<span class="notice">{phone} whitelisted</span>')
+    return HTMLResponse(f'<span class="notice">{display_name or phone} whitelisted</span>')
 
 
-@router.delete("/config/whitelist/{entry_id}")
+@router.delete("/whitelist/{entry_id}")
 async def delete_whitelist(request: Request, entry_id: int):
     await db.remove_whitelist_entry(entry_id)
     entries = await db.get_whitelist()
@@ -286,7 +345,7 @@ async def delete_whitelist(request: Request, entry_id: int):
     })
 
 
-@router.post("/config/whitelist/{entry_id}/toggle")
+@router.post("/whitelist/{entry_id}/toggle")
 async def toggle_whitelist(request: Request, entry_id: int):
     entries = await db.get_whitelist()
     current = next((e for e in entries if e["id"] == entry_id), None)
@@ -457,6 +516,17 @@ async def reply_message(request: Request):
 
     if platform != "whatsapp":
         return JSONResponse({"error": "Only WhatsApp replies are supported"}, status_code=400)
+
+    # Auto-whitelist the recipient so their replies are not blocked
+    existing = await db.get_whitelist()
+    already = any(e["filter_type"] == "phone" and e["value"] == chat_id for e in existing)
+    if not already:
+        await db.add_whitelist_entry(
+            filter_type="phone", value=chat_id,
+            platform="whatsapp",
+            notes="Auto-whitelisted via web reply",
+        )
+        log.info("auto_whitelisted", chat_id=chat_id, source="web_reply")
 
     # For group chats, the chat_id needs @g.us suffix for Evolution API
     if chat_rowid:

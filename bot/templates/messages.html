@@ -14,9 +14,16 @@
         </select>
         <select name="chat_id">
             <option value="">All chats</option>
-            {% for c in chats %}
+            {# Group 1: contacts with name and real phone number #}
+            {% for c in chats|sort(attribute='display_name') if not c.is_group and c.display_name and is_phone(c.chat_id) %}
             <option value="{{ c.chat_id }}" {% if filter_chat_id == c.chat_id %}selected{% endif %}>
-                {{ c.display_name or c.chat_id }} ({{ c.platform }})
+                {{ 'W' if c.platform == 'whatsapp' else 'T' }} | {{ c.display_name }} ({{ c.chat_id | format_phone_plain }})
+            </option>
+            {% endfor %}
+            {# Group 2: everything else (groups, unnamed, non-phone IDs) #}
+            {% for c in chats|sort(attribute='display_name') if c.is_group or not c.display_name or not is_phone(c.chat_id) %}
+            <option value="{{ c.chat_id }}" {% if filter_chat_id == c.chat_id %}selected{% endif %}>
+                {{ 'W' if c.platform == 'whatsapp' else 'T' }} | {% if c.is_group %}{{ c.group_name or c.display_name or c.chat_id }}{% elif c.display_name %}{{ c.display_name }} ({{ c.chat_id }}){% else %}{{ c.chat_id }}{% endif %}
             </option>
             {% endfor %}
         </select>
@@ -98,9 +105,9 @@
                     <span class="secondary">—</span>
                 {% endif %}
             </td>
-            <td style="max-width:160px;">
+            <td style="min-width:140px;">
                 {% if msg.audio_path %}
-                    <audio controls preload="none" src="/audios/{{ msg.audio_path }}" style="width:120px; height:32px;"></audio>
+                    <audio controls preload="none" src="/audios/{{ msg.audio_path }}" style="width:140px; height:32px;"></audio>
                     {% if not msg.transcription %}
                     <button class="outline small transcribe-btn"
                         data-msg-id="{{ msg.id }}"
@@ -118,10 +125,10 @@
                 <div style="display:flex; gap:.25rem;">
                 <button class="outline small"
                     hx-post="/messages/whitelist-quick"
-                    hx-vals='{"phone":"{{ msg.chat_id }}","platform":"{{ msg.platform }}","display_name":"{{ msg.display_name or '' }}"}'
+                    hx-vals='{"phone":"{{ msg.effective_phone }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or msg.display_name or '' }}"}'
                     hx-target="#wl-toast"
                     hx-swap="innerHTML"
-                    title="Add {{ msg.chat_id }} to whitelist"
+                    title="Add {{ msg.effective_phone | format_phone_plain }} to whitelist"
                     style="padding:.2rem .5rem; font-size:.75rem"
                 >+WL</button>
                 <button class="outline small reply-btn"
