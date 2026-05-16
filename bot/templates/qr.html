@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% set active = "qr" %}
+{% block title %}WhatsApp QR — MsgBot{% endblock %}
+{% block page_title %}WhatsApp{% endblock %}
+
+{% block content %}
+<div id="qr-container">
+    <article class="qr-card" id="qr-status">
+        <p>Connecting to Evolution API...</p>
+    </article>
+
+    <article class="qr-card" id="qr-image-container" style="display: none;">
+        <header>Scan QR Code</header>
+        <img id="qr-image" alt="QR Code">
+        <p class="secondary" style="margin-top:1rem;">Open WhatsApp → Linked Devices → Link a Device</p>
+    </article>
+
+    <article class="connected-card" id="connected-status" style="display: none;">
+        <header>
+            <span class="status-dot green"></span>
+            WhatsApp Connected
+        </header>
+        <p id="connected-info">Your WhatsApp is linked to MsgBot.</p>
+    </article>
+
+    <article class="error-card" id="error-status" style="display: none;">
+        <header><span class="status-dot red"></span> Error</header>
+        <p id="error-message"></p>
+    </article>
+</div>
+
+<div class="qr-actions">
+    <form action="/qr/disconnect" method="post">
+        <button type="submit" class="outline secondary">Disconnect</button>
+    </form>
+    <form action="/qr/reconnect" method="post">
+        <button type="submit" class="outline">Reconnect</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${location.host}/ws/qr`);
+
+    const qrStatus = document.getElementById('qr-status');
+    const qrImageContainer = document.getElementById('qr-image-container');
+    const qrImage = document.getElementById('qr-image');
+    const connectedStatus = document.getElementById('connected-status');
+    const connectedInfo = document.getElementById('connected-info');
+    const errorStatus = document.getElementById('error-status');
+    const errorMessage = document.getElementById('error-message');
+
+    function hideAll() {
+        qrStatus.style.display = 'none';
+        qrImageContainer.style.display = 'none';
+        connectedStatus.style.display = 'none';
+        errorStatus.style.display = 'none';
+    }
+
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'connected') {
+            hideAll();
+            connectedStatus.style.display = 'block';
+            connectedInfo.textContent = 'Your WhatsApp is linked to MsgBot. State: ' + data.state;
+        } else if (data.type === 'qr') {
+            hideAll();
+            if (data.base64) {
+                qrImageContainer.style.display = 'block';
+                // base64 may or may not have data URI prefix
+                const src = data.base64.startsWith('data:') ? data.base64 : 'data:image/png;base64,' + data.base64;
+                qrImage.src = src;
+            } else {
+                qrStatus.style.display = 'block';
+                qrStatus.innerHTML = '<p>Waiting for QR code...</p>';
+            }
+        } else if (data.type === 'error') {
+            hideAll();
+            errorStatus.style.display = 'block';
+            errorMessage.textContent = data.error;
+        }
+    };
+
+    ws.onerror = function() {
+        hideAll();
+        errorStatus.style.display = 'block';
+        errorMessage.textContent = 'WebSocket connection failed. Refresh to retry.';
+    };
+
+    ws.onclose = function() {
+        hideAll();
+        qrStatus.style.display = 'block';
+        qrStatus.innerHTML = '<p>Connection closed. <a href="/qr">Refresh</a></p>';
+    };
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% set active = "workflows" %}
+{% block title %}{{ workflow.name }} — MsgBot{% endblock %}
+{% block page_title %}Workflow: {{ workflow.name }}{% endblock %}
+
+{% block content %}
+<!-- Workflow settings -->
+<article>
+    <form method="post" action="/workflows/{{ workflow.id }}/update"
+          hx-post="/workflows/{{ workflow.id }}/update" hx-target="#wf-notice" hx-swap="innerHTML">
+        <div style="display:grid; grid-template-columns:1fr 2fr; gap:0.75rem;">
+            <div>
+                <label for="wf-name">Name</label>
+                <input type="text" id="wf-name" name="name" value="{{ workflow.name }}" required>
+            </div>
+            <div>
+                <label for="wf-desc">Description</label>
+                <input type="text" id="wf-desc" name="description" value="{{ workflow.description }}">
+            </div>
+        </div>
+        <div style="display:flex; gap:1rem; align-items:center; margin-top:0.75rem;">
+            <label style="display:flex; align-items:center; gap:0.5rem; margin:0; cursor:pointer;">
+                <input type="checkbox" name="enabled" value="1" {% if workflow.enabled %}checked{% endif %} style="width:auto; margin:0;">
+                Enabled
+            </label>
+            <button type="submit" style="margin:0;">Save</button>
+            <button type="button" class="outline secondary" style="margin:0; font-size:0.78rem;"
+                    hx-delete="/workflows/{{ workflow.id }}"
+                    hx-confirm="Delete this workflow and all its steps?">Delete Workflow</button>
+            <span id="wf-notice"></span>
+        </div>
+    </form>
+</article>
+
+<!-- Pipeline steps -->
+<div class="section-title">Pipeline Steps</div>
+<article>
+    {% if workflow.steps %}
+    <div class="overflow-auto">
+    <table id="steps-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Label</th>
+                <th>Condition</th>
+                <th>Config</th>
+                <th>Active</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for step in workflow.steps %}
+            <tr>
+                <td>{{ step.step_order }}</td>
+                <td><code>{{ step.step_type }}</code></td>
+                <td>
+                    <form method="post" action="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
+                          hx-post="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
+                          hx-target="closest tr" hx-swap="outerHTML"
+                          style="display:flex; gap:0.4rem; align-items:center; margin:0;">
+                        <input type="text" name="label" value="{{ step.label }}" placeholder="Label"
+                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; min-width:100px;">
+                </td>
+                <td>
+                        <input type="text" name="condition" value="{{ step.condition }}" placeholder="(none)"
+                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; width:120px;">
+                </td>
+                <td>
+                        <input type="text" name="config_json" value='{{ step.config_json }}' placeholder='{}'
+                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.75rem; font-family:monospace; min-width:200px;">
+                </td>
+                <td>
+                        <input type="hidden" name="enabled" value="0">
+                        <input type="checkbox" name="enabled" value="1" {% if step.enabled %}checked{% endif %}
+                               style="width:auto; margin:0;">
+                </td>
+                <td style="white-space:nowrap;">
+                        <button type="submit" style="padding:2px 6px; font-size:0.7rem; margin:0;">Save</button>
+                    </form>
+                    <form method="post" action="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
+                          style="display:inline; margin:0;"
+                          hx-delete="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
+                          hx-confirm="Remove this step?">
+                        <button type="submit" class="outline secondary" style="padding:2px 6px; font-size:0.7rem; margin:0;">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="secondary" style="font-size:0.82rem;">No steps yet. Add one below.</p>
+    {% endif %}
+
+    <!-- Add step form -->
+    <div style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid var(--border-subtle);">
+        <strong style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted);">Add Step</strong>
+        <form method="post" action="/workflows/{{ workflow.id }}/steps" style="margin-top:0.5rem;">
+            <div style="display:grid; grid-template-columns:auto 1fr 1fr auto auto; gap:0.5rem; align-items:end;">
+                <div>
+                    <label style="font-size:0.72rem;">Type</label>
+                    <select name="step_type" required style="margin:0; min-width:130px;">
+                        <option value="transcribe">transcribe</option>
+                        <option value="llm">llm</option>
+                        <option value="reply_text">reply_text</option>
+                        <option value="reply_audio">reply_audio</option>
+                        <option value="save">save</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:0.72rem;">Label</label>
+                    <input type="text" name="label" placeholder="Step label" style="margin:0;">
+                </div>
+                <div>
+                    <label style="font-size:0.72rem;">Config JSON</label>
+                    <input type="text" name="config_json" value="{}" placeholder='{"prompt":"..."}' style="margin:0; font-family:monospace; font-size:0.8rem;">
+                </div>
+                <div>
+                    <label style="font-size:0.72rem;">Condition</label>
+                    <input type="text" name="condition" placeholder="(none)" style="margin:0; width:120px;">
+                </div>
+                <button type="submit" style="margin:0;">Add</button>
+            </div>
+        </form>
+    </div>
+</article>
+
+<!-- Linked whitelist entries -->
+<div class="section-title">Linked Contacts (Whitelist)</div>
+<article>
+    <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.75rem;">
+        This workflow runs for these whitelisted contacts. Contacts without any linked workflow use the first enabled workflow.
+    </p>
+    {% if linked_whitelist %}
+    <table style="font-size:0.82rem;">
+        <thead>
+            <tr><th>Platform</th><th>Type</th><th>Value</th><th>Notes</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for wl in linked_whitelist %}
+            <tr>
+                <td><span class="badge badge-{{ wl.platform or 'any' }}">{{ wl.platform or 'any' }}</span></td>
+                <td>{{ wl.filter_type }}</td>
+                <td><strong>{{ wl.value }}</strong></td>
+                <td style="color:var(--text-secondary);">{{ wl.notes }}</td>
+                <td>
+                    <form method="post" action="/workflows/{{ workflow.id }}/unlink-whitelist/{{ wl.id }}" style="margin:0;">
+                        <button type="submit" class="outline secondary" style="padding:2px 8px; font-size:0.72rem; margin:0;">Unlink</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="secondary" style="font-size:0.82rem;">No contacts linked. This workflow won't run unless it's the first enabled workflow (default fallback).</p>
+    {% endif %}
+
+    <!-- Link form -->
+    {% set available = [] %}
+    {% set linked_ids = linked_whitelist | map(attribute='id') | list %}
+    <form method="post" action="/workflows/{{ workflow.id }}/link-whitelist" style="margin-top:0.75rem;">
+        <div style="display:flex; gap:0.5rem; align-items:end;">
+            <div style="flex:1;">
+                <label style="font-size:0.72rem;">Add Contact</label>
+                <select name="whitelist_id" required style="margin:0;">
+                    <option value="">Select...</option>
+                    {% for wl in all_whitelist %}
+                    {% if wl.id not in linked_ids %}
+                    <option value="{{ wl.id }}">{{ wl.value }} ({{ wl.filter_type }}, {{ wl.platform or 'any' }})</option>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" style="margin:0;">Link</button>
+        </div>
+    </form>
+</article>
+
+<!-- Recent execution logs -->
+<div class="section-title">Recent Execution Logs</div>
+<article>
+    {% if wf_logs %}
+    <div class="overflow-auto">
+    <table style="font-size:0.78rem;">
+        <thead>
+            <tr><th>Time</th><th>Run</th><th>#</th><th>Step</th><th>Status</th><th>Input</th><th>Output</th><th>ms</th></tr>
+        </thead>
+        <tbody>
+            {% for l in wf_logs %}
+            <tr>
+                <td class="nowrap">{{ ts_to_str(l.created_at) }}</td>
+                <td class="text-mono" style="font-size:0.68rem;">{{ l.run_id[:8] }}</td>
+                <td>{{ l.step_order }}</td>
+                <td><code>{{ l.step_type }}</code></td>
+                <td>
+                    {% if l.status == 'ok' %}
+                    <span style="color:var(--green);">✓</span>
+                    {% elif l.status == 'skipped' %}
+                    <span style="color:var(--text-muted);">⏭</span>
+                    {% else %}
+                    <span style="color:var(--red);">✗</span>
+                    {% endif %}
+                </td>
+                <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis;">{{ l.input_summary }}</td>
+                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">
+                    {% if l.error_text %}
+                    <span style="color:var(--red);">{{ l.error_text[:100] }}</span>
+                    {% else %}
+                    {{ l.output_summary }}
+                    {% endif %}
+                </td>
+                <td>{{ l.elapsed_ms }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="secondary" style="font-size:0.82rem;">No execution logs yet. Send a message to trigger this workflow.</p>
+    {% endif %}
+</article>
+
+<div style="margin-top:1rem;">
+    <a href="/workflows" class="outline">← Back to Workflows</a>
+</div>
+{% endblock %}

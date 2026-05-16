@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=evolution
+      - POSTGRES_PASSWORD=evolution
+      - POSTGRES_DB=evolution
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - msgbot-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  evolution-api:
+    image: atendai/evolution-api:v2.2.3
+    ports:
+      - "8085:8080"
+    environment:
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - SERVER_URL=http://evolution-api:8080
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution:evolution@postgres:5432/evolution?schema=public
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - CACHE_LOCAL_ENABLED=true
+      - CACHE_REDIS_ENABLED=false
+      - LOG_BAILEYS=error
+      - CONFIG_SESSION_PHONE_CLIENT=Evolution API
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+      - CONFIG_SESSION_PHONE_VERSION=22.04
+    volumes:
+      - evolution_data:/evolution
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - msgbot-net
+    restart: unless-stopped
+
+  transcriber:
+    build:
+      context: ../company-manager/framework/transcriber
+    ports:
+      - "8001:8000"
+    volumes:
+      - whisper_cache:/cache
+    networks:
+      - msgbot-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  tts:
+    build:
+      context: ../company-manager/framework/tts
+    ports:
+      - "8002:8000"
+    networks:
+      - msgbot-net
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: .
+    ports:
+      - "8088:8000"
+    env_file:
+      - .env
+    environment:
+      - EVOLUTION_API_URL=http://evolution-api:8080
+      - TRANSCRIBER_URL=http://transcriber:8000
+      - TTS_URL=http://tts:8000
+      - DATA_DIR=/app/data
+    volumes:
+      - bot_data:/app/data
+    depends_on:
+      - evolution-api
+      - transcriber
+      - tts
+    networks:
+      - msgbot-net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  evolution_data:
+  whisper_cache:
+  bot_data:
+
+networks:
+  msgbot-net:
+    driver: bridge

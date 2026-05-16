@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% set active = "logs" %}
+{% block title %}Logs — MsgBot{% endblock %}
+{% block page_title %}Live Logs{% endblock %}
+
+{% block content %}
+
+<div class="log-controls">
+    <fieldset role="group">
+        <button class="log-filter active" data-level="all">All</button>
+        <button class="log-filter" data-level="info">Info</button>
+        <button class="log-filter" data-level="warning">Warning</button>
+        <button class="log-filter" data-level="error">Error</button>
+        <button class="log-filter" data-level="workflow">Workflow</button>
+    </fieldset>
+    <button id="log-pause" class="outline secondary">Pause</button>
+</div>
+
+<div id="log-container" class="log-container">
+    <p class="secondary">Connecting to log stream...</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const container = document.getElementById('log-container');
+    const pauseBtn = document.getElementById('log-pause');
+    let paused = false;
+    let activeFilter = 'all';
+
+    const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${location.host}/ws/logs`);
+
+    ws.onopen = function() {
+        container.innerHTML = '';
+    };
+
+    ws.onmessage = function(event) {
+        if (paused) return;
+
+        const data = JSON.parse(event.data);
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-${data.level}`;
+        entry.dataset.level = data.level;
+
+        const ts = new Date(data.timestamp * 1000).toLocaleTimeString();
+        entry.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-level">[${data.level.toUpperCase()}]</span> <span class="log-src">${data.source}</span> ${data.message}`;
+        entry.dataset.source = data.source || '';
+
+        if (activeFilter !== 'all') {
+            if (activeFilter === 'workflow') {
+                if (data.source !== 'workflow') entry.style.display = 'none';
+            } else if (data.level !== activeFilter) {
+                entry.style.display = 'none';
+            }
+        }
+
+        container.appendChild(entry);
+
+        // Keep max 500 entries
+        while (container.children.length > 500) {
+            container.removeChild(container.firstChild);
+        }
+
+        // Auto-scroll
+        container.scrollTop = container.scrollHeight;
+    };
+
+    ws.onerror = function() {
+        container.innerHTML += '<p class="text-error">WebSocket error. Refresh to retry.</p>';
+    };
+
+    // Pause/resume
+    pauseBtn.addEventListener('click', function() {
+        paused = !paused;
+        pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+        pauseBtn.classList.toggle('contrast', paused);
+    });
+
+    // Level filter
+    document.querySelectorAll('.log-filter').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.log-filter').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            activeFilter = this.dataset.level;
+
+            document.querySelectorAll('.log-entry').forEach(entry => {
+                if (activeFilter === 'all') {
+                    entry.style.display = '';
+                } else if (activeFilter === 'workflow') {
+                    entry.style.display = entry.dataset.source === 'workflow' ? '' : 'none';
+                } else {
+                    entry.style.display = entry.dataset.level === activeFilter ? '' : 'none';
+                }
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}

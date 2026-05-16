@@ -1,0 +1,26 @@
+{% for e in whitelist %}
+<tr>
+    <td>{{ e.filter_type }}</td>
+    <td>{{ e.platform or 'any' }}</td>
+    <td>{{ e.value }}</td>
+    <td>{{ e.notes }}</td>
+    <td>
+        <span style="cursor:pointer"
+            hx-post="/config/whitelist/{{ e.id }}/toggle"
+            hx-target="#whitelist-body"
+            hx-swap="innerHTML"
+        >{% if e.enabled %}✅{% else %}❌{% endif %}</span>
+    </td>
+    <td>
+        <button class="outline small"
+            hx-delete="/config/whitelist/{{ e.id }}"
+            hx-target="#whitelist-body"
+            hx-swap="innerHTML"
+            hx-confirm="Remove this entry?"
+        >Remove</button>
+    </td>
+</tr>
+{% endfor %}
+{% if not whitelist %}
+<tr><td colspan="6" class="secondary">No whitelist entries. All incoming messages will be logged but not responded to.</td></tr>
+{% endif %}

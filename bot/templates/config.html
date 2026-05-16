@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% set active = "config" %}
+{% block title %}Configuration — MsgBot{% endblock %}
+{% block page_title %}Configuration{% endblock %}
+
+{% block content %}
+
+<!-- Global Config -->
+<article>
+    <header><h3>Global Settings</h3></header>
+    <form hx-post="/config" hx-target="#config-status" hx-swap="innerHTML">
+        <label for="default_system_prompt">Default System Prompt</label>
+        <textarea
+            id="default_system_prompt"
+            name="default_system_prompt"
+            rows="4"
+        >{{ config.get('default_system_prompt', defaults.default_system_prompt) }}</textarea>
+
+        <label for="response_mode">Default Response Mode</label>
+        <fieldset>
+            {% set current_mode = config.get('response_mode', defaults.response_mode) %}
+            <label>
+                <input type="radio" name="response_mode" value="auto" {% if current_mode == 'auto' %}checked{% endif %}>
+                Auto (voice reply to voice, text to text)
+            </label>
+            <label>
+                <input type="radio" name="response_mode" value="text" {% if current_mode == 'text' %}checked{% endif %}>
+                Text only
+            </label>
+            <label>
+                <input type="radio" name="response_mode" value="voice" {% if current_mode == 'voice' %}checked{% endif %}>
+                Voice only
+            </label>
+        </fieldset>
+
+        <label for="azure_deployment">Azure OpenAI Deployment</label>
+        <input type="text" name="azure_deployment" id="azure_deployment"
+            value="{{ config.get('azure_deployment', defaults.azure_deployment) }}"
+            placeholder="e.g. gpt-4.1">
+
+        <button type="submit">Save Global Config</button>
+        <div id="config-status"></div>
+    </form>
+</article>
+
+<!-- Per-Chat Overrides -->
+<article>
+    <header><h3>Per-Chat Overrides</h3></header>
+    {% if chats %}
+    <div class="overflow-auto">
+    <table>
+        <thead>
+            <tr>
+                <th>Platform</th>
+                <th>Type</th>
+                <th>Name</th>
+                <th>Phone / ID</th>
+                <th>System Prompt</th>
+                <th>Mode</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for chat in chats %}
+            <tr>
+                <td><span class="badge badge-{{ chat.platform }}">{{ chat.platform }}</span></td>
+                <td>{% if chat.is_group %}<span class="chat-type-tag group">group</span>{% else %}<span class="chat-type-tag dm">dm</span>{% endif %}</td>
+                <td>
+                    {% if chat.is_group %}
+                        <a href="/messages/{{ chat.id }}">{{ chat.group_name or '(unnamed group)' }}</a>
+                        {% if chat.display_name %}<br><span class="chat-sender">↳ {{ chat.display_name }}</span>{% endif %}
+                    {% else %}
+                        <a href="/messages/{{ chat.id }}">{{ chat.display_name or '(no name)' }}</a>
+                    {% endif %}
+                </td>
+                <td class="nowrap text-mono">{{ chat.chat_id }}</td>
+                <td>
+                    <textarea
+                        form="chat-form-{{ chat.id }}"
+                        name="system_prompt"
+                        rows="2"
+                        placeholder="(uses global default)"
+                    >{{ chat.system_prompt }}</textarea>
+                </td>
+                <td>
+                    <select form="chat-form-{{ chat.id }}" name="response_mode">
+                        <option value="" {% if not chat.response_mode %}selected{% endif %}>(global default)</option>
+                        <option value="auto" {% if chat.response_mode == 'auto' %}selected{% endif %}>auto</option>
+                        <option value="text" {% if chat.response_mode == 'text' %}selected{% endif %}>text</option>
+                        <option value="voice" {% if chat.response_mode == 'voice' %}selected{% endif %}>voice</option>
+                    </select>
+                </td>
+                <td>
+                    <form
+                        id="chat-form-{{ chat.id }}"
+                        hx-post="/config/chats/{{ chat.id }}"
+                        hx-target="#chat-status-{{ chat.id }}"
+                        hx-swap="innerHTML"
+                    >
+                        <button type="submit" class="outline small">Save</button>
+                        <span id="chat-status-{{ chat.id }}"></span>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="secondary">No chats yet. Start chatting to see per-chat configuration here.</p>
+    {% endif %}
+</article>
+
+<!-- Access Control / Whitelist -->
+<article>
+    <header><h3>Access Control (Whitelist)</h3></header>
+    <p class="secondary">When the whitelist is <strong>empty</strong>, all messages are allowed through. Once you add at least one entry, only matching contacts/channels will receive responses. All messages are still logged regardless.</p>
+
+    <!-- Add new entry -->
+    <form hx-post="/config/whitelist" hx-target="#whitelist-body" hx-swap="innerHTML">
+        <div class="grid">
+            <div>
+                <label for="wl-filter-type">Filter Type</label>
+                <select name="filter_type" id="wl-filter-type" required>
+                    <option value="phone">Phone Number</option>
+                    <option value="contact_name">Contact Name</option>
+                    <option value="channel">Channel / Group</option>
+                </select>
+            </div>
+            <div>
+                <label for="wl-platform">Platform</label>
+                <select name="platform" id="wl-platform">
+                    <option value="">Any</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="whatsapp">WhatsApp</option>
+                </select>
+            </div>
+            <div>
+                <label for="wl-value">Value</label>
+                <input type="text" name="value" id="wl-value" placeholder="e.g. +5511999..." required>
+            </div>
+            <div>
+                <label for="wl-notes">Notes</label>
+                <input type="text" name="notes" id="wl-notes" placeholder="optional">
+            </div>
+        </div>
+        <button type="submit" class="outline">+ Add Whitelist Entry</button>
+    </form>
+
+    <div class="overflow-auto" style="margin-top: 1rem;">
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Platform</th>
+                <th>Value</th>
+                <th>Notes</th>
+                <th>Enabled</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="whitelist-body">
+            {% for e in whitelist %}
+            <tr>
+                <td>{{ e.filter_type }}</td>
+                <td>{{ e.platform or 'any' }}</td>
+                <td>{{ e.value }}</td>
+                <td>{{ e.notes }}</td>
+                <td>
+                    <span style="cursor:pointer"
+                        hx-post="/config/whitelist/{{ e.id }}/toggle"
+                        hx-target="#whitelist-body"
+                        hx-swap="innerHTML"
+                    >{% if e.enabled %}✅{% else %}❌{% endif %}</span>
+                </td>
+                <td>
+                    <button class="outline small"
+                        hx-delete="/config/whitelist/{{ e.id }}"
+                        hx-target="#whitelist-body"
+                        hx-swap="innerHTML"
+                        hx-confirm="Remove this entry?"
+                    >Remove</button>
+                </td>
+            </tr>
+            {% endfor %}
+            {% if not whitelist %}
+            <tr><td colspan="6" class="secondary">No whitelist entries. All incoming messages will be logged but not responded to.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+    </div>
+</article>
+
+<!-- Database Maintenance -->
+<article>
+    <header><h3>Database Maintenance</h3></header>
+    <p class="secondary">Clear stored data. This action cannot be undone.</p>
+    <div id="clear-status"></div>
+    <div class="grid">
+        <button class="outline"
+            hx-post="/config/clear/messages"
+            hx-target="#clear-status"
+            hx-swap="innerHTML"
+            hx-confirm="Delete ALL messages? This cannot be undone."
+        >Clear Messages</button>
+        <button class="outline"
+            hx-post="/config/clear/logs"
+            hx-target="#clear-status"
+            hx-swap="innerHTML"
+            hx-confirm="Delete ALL logs? This cannot be undone."
+        >Clear Logs</button>
+        <button class="outline"
+            hx-post="/config/clear/chats"
+            hx-target="#clear-status"
+            hx-swap="innerHTML"
+            hx-confirm="Delete ALL chats and messages? This cannot be undone."
+        >Clear Chats &amp; Messages</button>
+        <button class="outline"
+            hx-post="/config/clear/whitelist"
+            hx-target="#clear-status"
+            hx-swap="innerHTML"
+            hx-confirm="Delete ALL whitelist entries? This will allow all messages through."
+        >Clear Whitelist</button>
+        <button class="outline"
+            hx-post="/config/clear/config"
+            hx-target="#clear-status"
+            hx-swap="innerHTML"
+            hx-confirm="Reset ALL configuration to defaults?"
+        >Reset Config</button>
+        <button class="outline contrast"
+            hx-post="/config/clear/all"
+            hx-target="#clear-status"
+            hx-swap="innerHTML"
+            hx-confirm="DELETE EVERYTHING? All messages, chats, logs, whitelist, and config will be erased. This cannot be undone!"
+        >Clear ALL Data</button>
+    </div>
+</article>
+{% endblock %}

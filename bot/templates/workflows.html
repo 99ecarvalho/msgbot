@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% set active = "workflows" %}
+{% block title %}Workflows — MsgBot{% endblock %}
+{% block page_title %}Workflows{% endblock %}
+
+{% block content %}
+<p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:1rem;">
+    Processing pipelines that run when whitelisted contacts send messages. Each workflow is a sequence of steps (transcribe, LLM, reply, etc).
+</p>
+
+<!-- Workflow list -->
+{% if workflows %}
+<div class="overflow-auto">
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Steps</th>
+            <th>Contacts</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for wf in workflows %}
+        <tr>
+            <td><a href="/workflows/{{ wf.id }}"><strong>{{ wf.name }}</strong></a></td>
+            <td style="font-size:0.82rem; color:var(--text-secondary);">{{ wf.description[:80] }}{% if wf.description|length > 80 %}…{% endif %}</td>
+            <td>{{ wf.step_count }}</td>
+            <td>{{ wf.linked_contacts }}</td>
+            <td>
+                {% if wf.enabled %}
+                <span class="badge" style="background:rgba(74,222,128,0.15); color:var(--green);">active</span>
+                {% else %}
+                <span class="badge" style="background:var(--red-soft); color:var(--red);">disabled</span>
+                {% endif %}
+            </td>
+            <td><a href="/workflows/{{ wf.id }}" class="outline" style="padding:2px 8px; font-size:0.75rem;">Edit</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state" style="padding:2rem;">
+    <p>No workflows yet. Create one below.</p>
+</div>
+{% endif %}
+
+<!-- Create workflow -->
+<div class="section-title" style="margin-top:1.5rem;">Create New Workflow</div>
+<article>
+    <form method="post" action="/workflows">
+        <div style="display:grid; grid-template-columns:1fr 2fr auto; gap:0.75rem; align-items:end;">
+            <div>
+                <label for="wf-name">Name</label>
+                <input type="text" id="wf-name" name="name" required placeholder="e.g. Summarize Audio">
+            </div>
+            <div>
+                <label for="wf-desc">Description</label>
+                <input type="text" id="wf-desc" name="description" placeholder="What this workflow does...">
+            </div>
+            <button type="submit">Create</button>
+        </div>
+    </form>
+</article>
+
+<!-- Step type reference -->
+<div class="section-title" style="margin-top:1.5rem;">Step Types Reference</div>
+<article>
+    <div class="overflow-auto">
+    <table style="font-size:0.8rem;">
+        <thead>
+            <tr><th>Type</th><th>Description</th><th>Config</th><th>Conditions</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>transcribe</code></td>
+                <td>Transcribe audio via Whisper. Sets current text to transcription.</td>
+                <td><code>{"language": "pt"}</code> (optional)</td>
+                <td><code>has_audio</code></td>
+            </tr>
+            <tr>
+                <td><code>llm</code></td>
+                <td>Process current text through LLM. Empty prompt = use chat default.</td>
+                <td><code>{"prompt": "You are..."}</code></td>
+                <td>—</td>
+            </tr>
+            <tr>
+                <td><code>reply_text</code></td>
+                <td>Send current text as text reply.</td>
+                <td><code>{"template": "📝 {text}"}</code> (optional)</td>
+                <td><code>has_text</code></td>
+            </tr>
+            <tr>
+                <td><code>reply_audio</code></td>
+                <td>TTS current text and send as audio reply.</td>
+                <td>—</td>
+                <td><code>mode_voice</code>, <code>mode_auto_voice</code></td>
+            </tr>
+            <tr>
+                <td><code>save</code></td>
+                <td>Save incoming + outgoing messages to database.</td>
+                <td>—</td>
+                <td>—</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</article>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block title %}Dashboard — MsgBot{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="section-title">Services</div>
+<div class="card-grid">
+    <article class="service-card">
+        <header>
+            <span class="status-dot {% if transcriber_health.get('status') == 'ok' %}green{% else %}red{% endif %}"></span>
+            Transcriber (Whisper)
+        </header>
+        <p>
+            {% if transcriber_health.get('status') == 'ok' %}
+                Model: {{ transcriber_health.get('model', 'N/A') }}<br>
+                Device: {{ transcriber_health.get('device', 'N/A') }}<br>
+                {{ 'Loaded' if transcriber_health.get('model_loaded') else 'Lazy load' }}
+            {% else %}
+                <span class="text-error">Unreachable</span>
+            {% endif %}
+        </p>
+    </article>
+
+    <article class="service-card">
+        <header>
+            <span class="status-dot {% if tts_health.get('status') == 'ok' %}green{% else %}red{% endif %}"></span>
+            TTS (Piper)
+        </header>
+        <p>
+            {% if tts_health.get('status') == 'ok' %}
+                Voice: {{ tts_health.get('voice', 'N/A') }}<br>
+                {{ 'Loaded' if tts_health.get('loaded') else 'Lazy load' }}
+            {% else %}
+                <span class="text-error">Unreachable</span>
+            {% endif %}
+        </p>
+    </article>
+
+    <article class="service-card">
+        <header>
+            {% set evo_state = evolution_health.get('connection', {}).get('instance', {}).get('state', 'unknown') %}
+            <span class="status-dot {% if evo_state == 'open' %}green{% elif evo_state == 'unknown' %}red{% else %}yellow{% endif %}"></span>
+            WhatsApp
+        </header>
+        <p>
+            {% if evo_state == 'open' %}
+                Connected
+            {% else %}
+                {{ evo_state | capitalize }}<br>
+                <a href="/qr">Scan QR &rarr;</a>
+            {% endif %}
+        </p>
+    </article>
+
+    <article class="service-card">
+        <header>
+            <span class="status-dot {% if telegram_configured %}green{% else %}yellow{% endif %}"></span>
+            Telegram
+        </header>
+        <p>
+            {% if telegram_configured %}
+                Token configured
+            {% else %}
+                <span class="text-warning">Not configured</span>
+            {% endif %}
+        </p>
+    </article>
+</div>
+
+<div class="section-title">Activity</div>
+<div class="card-grid">
+    <article class="stat-card">
+        <div class="stat-number">{{ total_chats }}</div>
+        <div class="stat-label">Active Chats</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-number">{{ recent_messages | length }}</div>
+        <div class="stat-label">Recent Messages</div>
+    </article>
+</div>
+
+<div class="section-title">Recent Messages</div>
+<div class="overflow-auto">
+<table>
+    <thead>
+        <tr>
+            <th>Time</th>
+            <th>Platform</th>
+            <th>Chat</th>
+            <th>Direction</th>
+            <th>Type</th>
+            <th>Preview</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for msg in recent_messages %}
+        <tr>
+            <td class="nowrap">{{ ts_to_str(msg.created_at) }}</td>
+            <td><span class="badge badge-{{ msg.platform }}">{{ msg.platform }}</span></td>
+            <td><a href="/messages/{{ msg.chat_rowid }}">{{ msg.display_name or msg.chat_id }}</a></td>
+            <td>
+                {% if msg.direction == 'in' %}
+                    <span class="badge badge-in">IN</span>
+                {% else %}
+                    <span class="badge badge-out">OUT</span>
+                {% endif %}
+            </td>
+            <td>{{ 'voice' if msg.msg_type == 'voice' else 'text' }}</td>
+            <td>{{ (msg.transcription or msg.content_text or '')[:80] }}{% if (msg.transcription or msg.content_text or '')|length > 80 %}&hellip;{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">
+            <div class="empty-state">
+                <div class="empty-icon">&mdash;</div>
+                <p>No messages yet</p>
+            </div>
+        </td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% set active = "messages" %}
+{% block title %}Messages — MsgBot{% endblock %}
+{% block page_title %}Messages{% if chat_info %} — {{ chat_info.display_name or chat_info.chat_id }}{% endif %}{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<form method="get" action="/messages" class="filter-bar">
+    <div class="grid">
+        <select name="platform">
+            <option value="">All platforms</option>
+            <option value="telegram" {% if filter_platform == 'telegram' %}selected{% endif %}>Telegram</option>
+            <option value="whatsapp" {% if filter_platform == 'whatsapp' %}selected{% endif %}>WhatsApp</option>
+        </select>
+        <select name="chat_id">
+            <option value="">All chats</option>
+            {% for c in chats %}
+            <option value="{{ c.chat_id }}" {% if filter_chat_id == c.chat_id %}selected{% endif %}>
+                {{ c.display_name or c.chat_id }} ({{ c.platform }})
+            </option>
+            {% endfor %}
+        </select>
+        <label style="display:flex; align-items:center; gap:.5rem; margin:0">
+            <input type="checkbox" name="whitelisted" value="1" {% if filter_whitelisted == '1' %}checked{% endif %} style="margin:0; width:auto">
+            Hide blocked
+        </label>
+        <button type="submit">Filter</button>
+    </div>
+</form>
+
+<div id="wl-toast"></div>
+
+<!-- Messages table -->
+<div class="overflow-auto">
+<table>
+    <thead>
+        <tr>
+            <th>Time</th>
+            <th>Platform</th>
+            <th>Chat</th>
+            <th>Dir</th>
+            <th>Type</th>            <th></th>            <th>Content</th>
+            <th>Audio</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for msg in messages %}
+        <tr>
+            <td class="nowrap">{{ ts_to_str(msg.created_at) }}</td>
+            <td>
+                <span class="badge badge-{{ msg.platform }}">{{ msg.platform }}</span>
+            </td>
+            <td>
+                <a href="/messages/{{ msg.chat_rowid }}">
+                    {% if msg.is_group %}
+                        <span class="chat-type-tag group">group</span>
+                        {{ msg.group_name or msg.chat_id }}
+                        {% if msg.effective_sender %}<br><span class="chat-sender">↳ {{ msg.effective_sender }}{% if msg.sender_phone %} ({{ msg.sender_phone }}){% endif %}</span>{% endif %}
+                    {% else %}
+                        {{ msg.display_name or msg.chat_id }}
+                        {% if msg.sender_phone %}<br><span class="chat-sender" style="font-size:.78rem; color:var(--muted-color);">{{ msg.sender_phone }}</span>{% endif %}
+                    {% endif %}
+                </a>
+            </td>
+            <td>
+                {% if msg.direction == 'in' %}
+                    <span class="badge badge-in">IN</span>
+                {% else %}
+                    <span class="badge badge-out">OUT</span>
+                {% endif %}
+            </td>
+            <td>{{ 'voice' if msg.msg_type == 'voice' else 'text' }}</td>
+            <td class="nowrap" title="{{ msg.device or '' }}">
+                {% if msg.device == 'android' %}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3ddc84" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16V9a7 7 0 0 1 14 0v7"/><path d="M3 15v2"/><path d="M21 15v2"/><rect x="5" y="10" width="14" height="10" rx="2"/><circle cx="9" cy="7" r=".5" fill="#3ddc84"/><circle cx="15" cy="7" r=".5" fill="#3ddc84"/></svg>
+                {% elif msg.device == 'ios' %}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.5 2 7 5 7 8v8a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4V8c0-3-1.5-6-5-6z"/><path d="M12 6v.01"/></svg>
+                {% elif msg.device == 'web' %}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                {% elif msg.device %}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                {% endif %}
+            </td>
+            <td>
+                {% if msg.transcription %}
+                    <p><strong>Transcription:</strong> {{ msg.transcription }}</p>
+                    {% if msg.llm_response %}
+                    <p><strong>LLM:</strong> {{ msg.llm_response }}</p>
+                    {% endif %}
+                    {% if msg.content_text and msg.content_text != msg.transcription %}
+                    <p>{{ msg.content_text }}</p>
+                    {% endif %}
+                {% elif msg.content_text %}
+                    <p>{{ msg.content_text }}</p>
+                {% else %}
+                    <span class="secondary">—</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if msg.audio_path %}
+                    <audio controls preload="none" src="/audios/{{ msg.audio_path }}"></audio>
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+            <td>
+                {% if msg.direction == 'in' %}
+                <div style="display:flex; gap:.25rem;">
+                <button class="outline small"
+                    hx-post="/messages/whitelist-quick"
+                    hx-vals='{"phone":"{{ msg.chat_id }}","platform":"{{ msg.platform }}","display_name":"{{ msg.display_name or '' }}"}'
+                    hx-target="#wl-toast"
+                    hx-swap="innerHTML"
+                    title="Add {{ msg.chat_id }} to whitelist"
+                    style="padding:.2rem .5rem; font-size:.75rem"
+                >+WL</button>
+                <button class="outline small reply-btn"
+                    data-chat-id="{{ msg.chat_id }}"
+                    data-platform="{{ msg.platform }}"
+                    data-chat-rowid="{{ msg.chat_rowid }}"
+                    data-display-name="{{ msg.display_name or msg.chat_id }}"
+                    title="Reply to {{ msg.display_name or msg.chat_id }}"
+                    style="padding:.2rem .5rem; font-size:.75rem"
+                >Reply</button>
+                </div>
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9">
+            <div class="empty-state">
+                <div class="empty-icon">&mdash;</div>
+                <p>No messages found</p>
+            </div>
+        </td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<!-- Reply Bar (sticky bottom) -->
+<div id="reply-bar" class="reply-bar" style="display:none;">
+    <div class="reply-bar-inner">
+        <div class="reply-header">
+            <span>Replying to <strong id="reply-to-name"></strong></span>
+            <button type="button" id="reply-close" class="outline small" style="padding:.2rem .5rem; font-size:.75rem; margin-left:auto;">&times;</button>
+        </div>
+        <div class="reply-body">
+            <textarea id="reply-text" rows="2" placeholder="Type your reply..."></textarea>
+            <div class="reply-actions">
+                <button type="button" id="reply-send-text" class="small">Send Text</button>
+                <button type="button" id="reply-send-voice" class="outline small">Send as Voice</button>
+                <span id="reply-status" style="font-size:.78rem; color:var(--text-muted);"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const replyBar = document.getElementById('reply-bar');
+    const replyToName = document.getElementById('reply-to-name');
+    const replyText = document.getElementById('reply-text');
+    const sendTextBtn = document.getElementById('reply-send-text');
+    const sendVoiceBtn = document.getElementById('reply-send-voice');
+    const replyStatus = document.getElementById('reply-status');
+    const replyClose = document.getElementById('reply-close');
+
+    let currentChatId = '';
+    let currentPlatform = '';
+    let currentChatRowid = 0;
+
+    // Open reply bar
+    document.querySelectorAll('.reply-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            currentChatId = this.dataset.chatId;
+            currentPlatform = this.dataset.platform;
+            currentChatRowid = parseInt(this.dataset.chatRowid) || 0;
+            replyToName.textContent = this.dataset.displayName;
+            replyText.value = '';
+            replyStatus.textContent = '';
+            replyBar.style.display = 'block';
+            replyText.focus();
+        });
+    });
+
+    replyClose.addEventListener('click', function() {
+        replyBar.style.display = 'none';
+    });
+
+    async function sendReply(mode) {
+        const text = replyText.value.trim();
+        if (!text) { replyStatus.textContent = 'Type a message first'; return; }
+
+        sendTextBtn.disabled = true;
+        sendVoiceBtn.disabled = true;
+        replyStatus.textContent = mode === 'voice' ? 'Synthesizing & sending...' : 'Sending...';
+
+        const fd = new FormData();
+        fd.append('chat_id', currentChatId);
+        fd.append('platform', currentPlatform);
+        fd.append('chat_rowid', currentChatRowid);
+        fd.append('text', text);
+        fd.append('mode', mode);
+
+        try {
+            const resp = await fetch('/messages/reply', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (data.ok) {
+                replyStatus.textContent = 'Sent!';
+                replyText.value = '';
+                setTimeout(function() { replyStatus.textContent = ''; }, 2000);
+            } else {
+                replyStatus.textContent = 'Error: ' + (data.error || 'Unknown');
+            }
+        } catch (err) {
+            replyStatus.textContent = 'Failed: ' + err.message;
+        } finally {
+            sendTextBtn.disabled = false;
+            sendVoiceBtn.disabled = false;
+        }
+    }
+
+    sendTextBtn.addEventListener('click', function() { sendReply('text'); });
+    sendVoiceBtn.addEventListener('click', function() { sendReply('voice'); });
+
+    // Ctrl+Enter to send text
+    replyText.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            sendReply('text');
+        }
+    });
+})();
+</script>
+{% endblock %}
