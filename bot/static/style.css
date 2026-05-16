@@ -593,6 +593,58 @@ audio {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
+/* ===== Whitelist controls in messages ===== */
+.wl-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.wl-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+.wl-label {
+    color: var(--text-muted);
+    min-width: 42px;
+    white-space: nowrap;
+}
+.wl-badge {
+    font-size: 0.7rem;
+    flex-shrink: 0;
+}
+.wl-badge.wl-on { opacity: 1; }
+.wl-badge.wl-off { opacity: 0.6; }
+.wl-btn {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.65rem;
+    padding: 0 4px;
+    border-radius: 3px;
+    line-height: 1.4;
+    flex-shrink: 0;
+}
+.wl-btn.wl-add {
+    background: var(--green-soft);
+    color: var(--green);
+    font-weight: 700;
+}
+.wl-btn.wl-add:hover {
+    background: var(--green);
+    color: var(--bg-base);
+}
+.wl-btn.wl-remove {
+    background: var(--red-soft);
+    color: var(--red);
+    font-weight: 700;
+}
+.wl-btn.wl-remove:hover {
+    background: var(--red);
+    color: var(--bg-base);
+}
+
 .text-mono {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.75rem;

@@ -44,13 +44,14 @@
         <tr>
             <th>Time</th>
             <th>Platform</th>
-            <th>Chat</th>
-            <th>Phone</th>
+            <th style="min-width:220px;">Chat</th>
+            <th>LID</th>
             <th>Dir</th>
             <th>Type</th>
             <th>Device</th>
             <th style="min-width:300px;">Content</th>
             <th style="width:140px;">Audio</th>
+            <th style="min-width:200px;">Whitelist</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -127,26 +128,96 @@
             </td>
             <td>
                 {% if msg.direction == 'in' %}
-                <div style="display:flex; gap:.25rem;">
+                {# ---- Whitelist status & controls ---- #}
+                <div class="wl-controls">
                 {% if msg.is_group %}
-                <button class="outline small"
-                    hx-post="/messages/whitelist-quick"
-                    hx-vals='{"entry_type":"person_in_group","phone":"{{ msg.effective_phone }}","group_id":"{{ msg.chat_id }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or '' }}"}'
-                    hx-target="#wl-toast"
-                    hx-swap="innerHTML"
-                    title="Whitelist {{ msg.effective_sender or msg.effective_phone }} in this group"
-                    style="padding:.2rem .5rem; font-size:.75rem"
-                >+WL</button>
+                    {# --- GROUP --- #}
+                    <div class="wl-row">
+                        <span class="wl-label">Group</span>
+                        {% if msg.wl_group %}
+                        <span class="wl-badge wl-on" title="Group whitelisted">✅</span>
+                        <button class="wl-btn wl-remove"
+                            hx-post="/messages/whitelist-remove"
+                            hx-vals='{"entry_id":"{{ msg.wl_group.id }}","label":"Group {{ msg.group_name or msg.chat_id }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Remove group from whitelist">✕</button>
+                        {% else %}
+                        <span class="wl-badge wl-off" title="Group NOT whitelisted">⛔</span>
+                        <button class="wl-btn wl-add"
+                            hx-post="/messages/whitelist-quick"
+                            hx-vals='{"entry_type":"group","group_id":"{{ msg.chat_id }}","platform":"{{ msg.platform }}","display_name":"{{ msg.group_name or msg.display_name or '' }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Whitelist entire group">+</button>
+                        {% endif %}
+                    </div>
+                    {# --- PERSON IN GROUP --- #}
+                    {% if msg.effective_phone and msg.sender_phone %}
+                    <div class="wl-row">
+                        <span class="wl-label" title="{{ msg.effective_sender }}">In grp</span>
+                        {% if msg.wl_person_in_group %}
+                        <span class="wl-badge wl-on" title="{{ msg.effective_sender }} whitelisted in this group">✅</span>
+                        <button class="wl-btn wl-remove"
+                            hx-post="/messages/whitelist-remove"
+                            hx-vals='{"entry_id":"{{ msg.wl_person_in_group.id }}","label":"{{ msg.effective_sender or msg.effective_phone }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Remove person from this group's whitelist">✕</button>
+                        {% else %}
+                        <span class="wl-badge wl-off" title="{{ msg.effective_sender }} NOT whitelisted in this group">⛔</span>
+                        <button class="wl-btn wl-add"
+                            hx-post="/messages/whitelist-quick"
+                            hx-vals='{"entry_type":"person_in_group","phone":"{{ msg.sender_phone }}","group_id":"{{ msg.chat_id }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or '' }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Whitelist {{ msg.effective_sender }} in this group only">+</button>
+                        {% endif %}
+                    </div>
+                    {# --- PERSON (global) --- #}
+                    <div class="wl-row">
+                        <span class="wl-label" title="{{ msg.effective_sender }}">Person</span>
+                        {% if msg.wl_person %}
+                        <span class="wl-badge wl-on" title="{{ msg.effective_sender }} whitelisted as person">✅</span>
+                        <button class="wl-btn wl-remove"
+                            hx-post="/messages/whitelist-remove"
+                            hx-vals='{"entry_id":"{{ msg.wl_person.id }}","label":"{{ msg.effective_sender or msg.effective_phone }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Remove person from whitelist">✕</button>
+                        {% else %}
+                        <span class="wl-badge wl-off" title="{{ msg.effective_sender }} NOT whitelisted as person">⛔</span>
+                        <button class="wl-btn wl-add"
+                            hx-post="/messages/whitelist-quick"
+                            hx-vals='{"entry_type":"person","phone":"{{ msg.sender_phone }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or '' }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Whitelist {{ msg.effective_sender }} everywhere">+</button>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 {% else %}
-                <button class="outline small"
-                    hx-post="/messages/whitelist-quick"
-                    hx-vals='{"entry_type":"person","phone":"{{ msg.effective_phone }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or msg.display_name or '' }}"}'
-                    hx-target="#wl-toast"
-                    hx-swap="innerHTML"
-                    title="Whitelist {{ msg.effective_sender or msg.effective_phone }}"
-                    style="padding:.2rem .5rem; font-size:.75rem"
-                >+WL</button>
+                    {# --- DM: PERSON --- #}
+                    <div class="wl-row">
+                        <span class="wl-label">Person</span>
+                        {% if msg.wl_person %}
+                        <span class="wl-badge wl-on" title="{{ msg.effective_sender or msg.display_name }} whitelisted">✅</span>
+                        <button class="wl-btn wl-remove"
+                            hx-post="/messages/whitelist-remove"
+                            hx-vals='{"entry_id":"{{ msg.wl_person.id }}","label":"{{ msg.effective_sender or msg.display_name or msg.effective_phone }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Remove from whitelist">✕</button>
+                        {% else %}
+                        <span class="wl-badge wl-off" title="{{ msg.effective_sender or msg.display_name }} NOT whitelisted">⛔</span>
+                        <button class="wl-btn wl-add"
+                            hx-post="/messages/whitelist-quick"
+                            hx-vals='{"entry_type":"person","phone":"{{ msg.effective_phone }}","platform":"{{ msg.platform }}","display_name":"{{ msg.effective_sender or msg.display_name or '' }}"}'
+                            hx-target="#wl-toast" hx-swap="innerHTML"
+                            title="Whitelist {{ msg.effective_sender or msg.display_name }}">+</button>
+                        {% endif %}
+                    </div>
                 {% endif %}
+                </div>
+                {% else %}
+                    <span class="secondary">—</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if msg.direction == 'in' %}
                 <button class="outline small reply-btn"
                     data-chat-id="{{ msg.chat_id }}"
                     data-platform="{{ msg.platform }}"
@@ -155,14 +226,13 @@
                     title="Reply to {{ msg.display_name or msg.chat_id }}"
                     style="padding:.2rem .5rem; font-size:.75rem"
                 >Reply</button>
-                </div>
                 {% else %}
                     —
                 {% endif %}
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="10">
+        <tr><td colspan="11">
             <div class="empty-state">
                 <div class="empty-icon">&mdash;</div>
                 <p>No messages found</p>

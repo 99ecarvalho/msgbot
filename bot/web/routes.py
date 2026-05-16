@@ -203,6 +203,29 @@ async def messages_page(request: Request, platform: str = "", chat_id: str = "",
     if whitelisted == "1":
         msgs = [m for m in msgs if not m.get("blocked")]
 
+    # Enrich messages with whitelist status
+    wl_entries = await db.get_whitelist()
+    for msg in msgs:
+        msg["wl_person"] = None
+        msg["wl_group"] = None
+        msg["wl_person_in_group"] = None
+        if msg.get("direction") != "in":
+            continue
+        for e in wl_entries:
+            if not e.get("enabled"):
+                continue
+            if e.get("platform") and e["platform"] != msg.get("platform"):
+                continue
+            et = e.get("entry_type") or e.get("filter_type", "")
+            sp = msg.get("sender_phone", "") or msg.get("effective_phone", "")
+            cid = msg.get("chat_id", "")
+            if et == "person" and e.get("phone") in (sp, cid) and sp:
+                msg["wl_person"] = e
+            elif et == "group" and msg.get("is_group") and e.get("group_id") == cid:
+                msg["wl_group"] = e
+            elif et == "person_in_group" and msg.get("is_group") and e.get("group_id") == cid and e.get("phone") == sp and sp:
+                msg["wl_person_in_group"] = e
+
     return templates.TemplateResponse("messages.html", {
         "request": request,
         "messages": msgs,
@@ -381,7 +404,18 @@ async def quick_whitelist(request: Request):
         notes="Quick-added from messages",
     )
     label = display_name or phone or group_id
-    return HTMLResponse(f'<span class="notice">{label} whitelisted</span>')
+    return HTMLResponse(f'<span class="notice">✅ {label} whitelisted</span>')
+
+
+@router.post("/messages/whitelist-remove")
+async def quick_remove_whitelist(request: Request):
+    """Quick-remove from the messages page whitelist."""
+    form = await request.form()
+    entry_id = int(form.get("entry_id", 0))
+    if entry_id:
+        await db.remove_whitelist_entry(entry_id)
+    label = form.get("label", "Entry")
+    return HTMLResponse(f'<span class="notice">❌ {label} removed from whitelist</span>')
 
 
 @router.delete("/whitelist/{entry_id}")
