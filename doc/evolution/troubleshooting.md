@@ -20,33 +20,22 @@ payload = {"audio": b64}
 
 ---
 
-### `not-acceptable` (group send)
+### `not-acceptable` / `SessionError: No sessions` (group send)
 
-**Cause:** Baileys cannot establish SenderKey encryption sessions with group participants. Typically happens after a logout/re-pair.
+**Cause:** Baileys v6.7.12 has a bug in `messages-send.js` where group participant JIDs are encoded using the **group's** domain (`@g.us` → `isLid=false` → `@s.whatsapp.net`) instead of each participant's actual domain (`@lid`). This causes `assertSessions` to request pre-keys for non-existent `@s.whatsapp.net` JIDs.
 
-**Symptoms:**
-- DM sending works fine
-- Group sending returns `400 Bad Request` with `not-acceptable`
-- The `Session` table in PostgreSQL has only the main credentials row
+**Fix — Patch two Baileys files in the container:**
 
-**Workarounds:**
-1. Send a DM to each group participant first — forces per-contact session establishment
-2. Wait for incoming group messages to trigger session rebuild
-3. As a last resort, delete and recreate the instance
+1. `/evolution/node_modules/baileys/lib/Utils/signal.js` — `extractDeviceJids()`:
+   - Line 102: `const { user }` → `const { user, server }`
+   - Line 110: `{ user, device }` → `{ user, device, server }`
 
-**Check sessions:**
-```bash
-docker exec msgbot-postgres-1 psql -U evolution -d evolution \
-  -c 'SELECT "sessionId", length("creds") as size, "createdAt" FROM "Session" ORDER BY "createdAt" DESC;'
-```
+2. `/evolution/node_modules/baileys/lib/Socket/messages-send.js`:
+   - Line 325: `isLid ? 'lid' : 's.whatsapp.net'` → `d.server || (isLid ? 'lid' : 's.whatsapp.net')`
+   - Line 334: `{ user, device }` → `{ user, device, server: dServer }`
+   - Line 335: `isLid ? 'lid' : 's.whatsapp.net'` → `dServer || (isLid ? 'lid' : 's.whatsapp.net')`
 
----
-
-### `SessionError: No sessions` (Baileys)
-
-**Cause:** Same as above — per-participant Signal protocol sessions are missing.
-
-**Details:** After logout, the Baileys session store is wiped. Only the main credential row remains. The per-participant sessions (needed for end-to-end encryption) must be re-established.
+This makes each participant use their actual JID domain from the USync query result.
 
 ---
 
