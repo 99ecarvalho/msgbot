@@ -30,11 +30,13 @@
             <td>{{ wf.step_count }}</td>
             <td>{{ wf.linked_contacts }}</td>
             <td>
-                {% if wf.enabled %}
-                <span class="badge" style="background:rgba(74,222,128,0.15); color:var(--green);">active</span>
-                {% else %}
-                <span class="badge" style="background:var(--red-soft); color:var(--red);">disabled</span>
-                {% endif %}
+                <label style="display:flex; align-items:center; gap:0.3rem; margin:0; cursor:pointer; font-size:0.8rem;">
+                    <input type="checkbox" {% if wf.enabled %}checked{% endif %}
+                           hx-post="/workflows/{{ wf.id }}/toggle-enabled"
+                           hx-target="closest tr" hx-swap="outerHTML"
+                           style="width:auto; margin:0;">
+                    {% if wf.enabled %}active{% else %}off{% endif %}
+                </label>
             </td>
             <td><a href="/workflows/{{ wf.id }}" class="outline" style="padding:2px 8px; font-size:0.75rem;">Edit</a></td>
         </tr>

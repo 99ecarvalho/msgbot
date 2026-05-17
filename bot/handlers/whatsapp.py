@@ -141,7 +141,7 @@ async def _handle_messages_upsert(payload: dict):
 
     # Handle audio/voice messages
     if message_type in ("audioMessage", "pttMessage") or "audioMessage" in message:
-        await _handle_audio_message(chat, phone, push_name, sender_phone, group_name, data, message_id, device)
+        await _handle_audio_message(chat, phone, push_name, sender_phone, group_name, data, message_id, device, remote_jid)
         return
 
     # Handle text messages (including commands)
@@ -152,10 +152,10 @@ async def _handle_messages_upsert(payload: dict):
         text = message["extendedTextMessage"].get("text", "")
 
     if text:
-        await _handle_text_message(chat, phone, push_name, sender_phone, group_name, text, device)
+        await _handle_text_message(chat, phone, push_name, sender_phone, group_name, text, device, remote_jid)
 
 
-async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_phone: str, group_name: str, data: dict, message_id: str, device: str = ""):
+async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_phone: str, group_name: str, data: dict, message_id: str, device: str = "", remote_jid: str = ""):
     """Process incoming audio/voice message."""
     is_ptt = data.get("messageType") == "pttMessage"
 
@@ -181,7 +181,8 @@ async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_p
         log.error("auto_transcribe_failed", phone=phone, error=str(e))
 
     # Whitelist check
-    wl_entry = await db.is_whitelisted("whatsapp", phone, is_group=bool(group_name), sender_phone=sender_phone)
+    is_group = remote_jid.endswith("@g.us")
+    wl_entry = await db.is_whitelisted("whatsapp", phone, is_group=is_group, sender_phone=sender_phone)
     if not wl_entry:
         await db.save_message(
             chat["id"], "in", "voice",
@@ -198,7 +199,7 @@ async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_p
     is_forwarded = data.get("message", {}).get("audioMessage", {}).get("contextInfo", {}).get("isForwarded", False)
 
     # Delegate to workflow engine
-    sender = WhatsAppSender(phone)
+    sender = WhatsAppSender(remote_jid or phone)
     await process_message(
         chat=chat, platform="whatsapp", phone=phone,
         push_name=push_name, sender_phone=sender_phone,
@@ -209,14 +210,15 @@ async def _handle_audio_message(chat: dict, phone: str, push_name: str, sender_p
     )
 
 
-async def _handle_text_message(chat: dict, phone: str, push_name: str, sender_phone: str, group_name: str, text: str, device: str = ""):
+async def _handle_text_message(chat: dict, phone: str, push_name: str, sender_phone: str, group_name: str, text: str, device: str = "", remote_jid: str = ""):
     """Handle incoming text messages (including commands)."""
     text = text.strip()
     if not text:
         return
 
     # Whitelist check
-    wl_entry = await db.is_whitelisted("whatsapp", phone, is_group=bool(group_name), sender_phone=sender_phone)
+    is_group = remote_jid.endswith("@g.us")
+    wl_entry = await db.is_whitelisted("whatsapp", phone, is_group=is_group, sender_phone=sender_phone)
     if not wl_entry:
         await db.save_message(chat["id"], "in", "text", content_text=text,
                               sender_name=push_name, sender_phone=sender_phone,
@@ -260,7 +262,7 @@ async def _handle_text_message(chat: dict, phone: str, push_name: str, sender_ph
         return
 
     # Regular text — delegate to workflow engine
-    sender = WhatsAppSender(phone)
+    sender = WhatsAppSender(remote_jid or phone)
     await process_message(
         chat=chat, platform="whatsapp", phone=phone,
         push_name=push_name, sender_phone=sender_phone,

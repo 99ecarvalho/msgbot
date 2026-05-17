@@ -27,7 +27,25 @@
             —
         {% endif %}
     </td>
-    <td style="font-size:.82rem;">{{ e.notes }}</td>
+    <td>
+        <form hx-post="/whitelist/{{ e.id }}/workflows" hx-target="#whitelist-body" hx-swap="innerHTML"
+              style="margin:0; display:flex; flex-wrap:wrap; gap:0.2rem 0.6rem; align-items:center;">
+            {% for wf in workflows %}
+            <label style="display:flex; align-items:center; gap:0.25rem; margin:0; cursor:pointer; font-size:0.78rem; white-space:nowrap;">
+                <input type="checkbox" name="workflow_ids" value="{{ wf.id }}"
+                       {% if wf.id in e.workflow_ids %}checked{% endif %}
+                       style="width:auto; margin:0;"
+                       hx-post="/whitelist/{{ e.id }}/workflows"
+                       hx-target="#whitelist-body" hx-swap="innerHTML"
+                       hx-include="closest form">
+                {{ wf.name }}{% if not wf.enabled %} <span style="color:var(--text-muted);">(off)</span>{% endif %}
+            </label>
+            {% endfor %}
+            {% if not workflows %}
+            <span style="color:var(--text-muted); font-size:0.78rem;">No workflows</span>
+            {% endif %}
+        </form>
+    </td>
     <td>
         <span style="cursor:pointer"
             hx-post="/whitelist/{{ e.id }}/toggle"
@@ -46,5 +64,5 @@
 </tr>
 {% endfor %}
 {% if not whitelist %}
-<tr><td colspan="8" class="secondary">No whitelist entries. All incoming messages will be logged but not responded to.</td></tr>
+<tr><td colspan="9" class="secondary">No whitelist entries. All incoming messages will be logged but not responded to.</td></tr>
 {% endif %}

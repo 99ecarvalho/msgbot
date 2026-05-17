@@ -62,16 +62,16 @@ class MessageSender(Protocol):
 
 
 class WhatsAppSender:
-    def __init__(self, phone: str):
-        self.phone = phone
+    def __init__(self, remote_jid: str):
+        self.remote_jid = remote_jid
 
     async def send_text(self, text: str) -> None:
         from bot.services import evolution
-        await evolution.send_text(self.phone, text)
+        await evolution.send_text(self.remote_jid, text)
 
     async def send_audio(self, audio_bytes: bytes) -> None:
         from bot.services import evolution
-        await evolution.send_audio(self.phone, audio_bytes)
+        await evolution.send_audio(self.remote_jid, audio_bytes)
 
 
 class TelegramSender:
@@ -117,10 +117,6 @@ def _get_response_mode(chat: dict) -> str:
     return chat.get("response_mode") or settings.response_mode
 
 
-def _get_system_prompt(chat: dict) -> str:
-    return chat.get("system_prompt") or settings.default_system_prompt
-
-
 # ---- Condition evaluator ----
 
 def _check_condition(condition: str, ctx: WorkflowContext) -> bool:
@@ -162,10 +158,10 @@ async def _step_transcribe(ctx: WorkflowContext, config: dict) -> tuple[str, str
 
 
 async def _step_llm(ctx: WorkflowContext, config: dict) -> tuple[str, str]:
-    """Process current_text through LLM. Empty prompt = use chat/global default."""
+    """Process current_text through LLM."""
     prompt = config.get("prompt", "")
     if not prompt:
-        prompt = _get_system_prompt(ctx.chat)
+        log.warning("LLM step has no prompt configured — using empty prompt")
 
     input_text = ctx.current_text
     if not input_text:

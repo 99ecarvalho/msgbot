@@ -315,15 +315,19 @@ async def whitelist_page(request: Request):
     entries = await db.get_whitelist()
     chats = await db.get_all_chats()
     groups = [c for c in chats if c.get("is_group")]
-    # Enrich entries with group display names
+    all_workflows = await db.get_all_workflows()
+    # Enrich entries with group display names and workflow links
     group_names = {c["chat_id"]: c.get("group_name") or c.get("display_name") or c["chat_id"] for c in groups}
     for e in entries:
         gid = e.get("group_id", "")
         e["group_display_name"] = group_names.get(gid, gid) if gid else ""
+        linked = await db.get_workflows_for_whitelist_entry(e["id"])
+        e["workflow_ids"] = [w["id"] for w in linked]
     return templates.TemplateResponse("whitelist.html", {
         "request": request,
         "whitelist": entries,
         "groups": groups,
+        "workflows": all_workflows,
     })
 
 
@@ -331,13 +335,17 @@ async def _enriched_whitelist(request: Request):
     """Helper: return enriched whitelist fragment."""
     entries = await db.get_whitelist()
     chats = await db.get_all_chats()
+    all_workflows = await db.get_all_workflows()
     group_names = {c["chat_id"]: c.get("group_name") or c.get("display_name") or c["chat_id"] for c in chats if c.get("is_group")}
     for e in entries:
         gid = e.get("group_id", "")
         e["group_display_name"] = group_names.get(gid, gid) if gid else ""
+        linked = await db.get_workflows_for_whitelist_entry(e["id"])
+        e["workflow_ids"] = [w["id"] for w in linked]
     return templates.TemplateResponse("_whitelist_rows.html", {
         "request": request,
         "whitelist": entries,
+        "workflows": all_workflows,
     })
 
 
@@ -430,6 +438,25 @@ async def toggle_whitelist(request: Request, entry_id: int):
     current = next((e for e in entries if e["id"] == entry_id), None)
     if current:
         await db.toggle_whitelist_entry(entry_id, not current["enabled"])
+    return await _enriched_whitelist(request)
+
+
+@router.post("/whitelist/{entry_id}/workflows")
+async def update_whitelist_workflows(request: Request, entry_id: int):
+    """Update workflow assignments for a whitelist entry."""
+    form = await request.form()
+    selected_ids = [int(v) for v in form.getlist("workflow_ids")]
+    # Get current links
+    current = await db.get_workflows_for_whitelist_entry(entry_id)
+    current_ids = {w["id"] for w in current}
+    # Add new links
+    for wf_id in selected_ids:
+        if wf_id not in current_ids:
+            await db.link_whitelist_workflow(entry_id, wf_id)
+    # Remove unlinked
+    for wf_id in current_ids:
+        if wf_id not in selected_ids:
+            await db.unlink_whitelist_workflow(entry_id, wf_id)
     return await _enriched_whitelist(request)
 
 
@@ -704,6 +731,39 @@ async def create_workflow(request: Request, name: str = Form(...), description: 
     return RedirectResponse("/workflows", status_code=303)
 
 
+@router.post("/workflows/{workflow_id}/toggle-enabled")
+async def toggle_workflow_enabled(request: Request, workflow_id: int):
+    """Toggle workflow enabled state from list page."""
+    wf = await db.get_workflow(workflow_id)
+    if wf:
+        new_val = 0 if wf.get("enabled") else 1
+        await db.update_workflow(workflow_id, enabled=new_val)
+        wf["enabled"] = new_val
+    steps = await db.get_workflow_steps(workflow_id)
+    linked = await db.get_whitelist_entries_for_workflow(workflow_id)
+    wf["step_count"] = len(steps)
+    wf["linked_contacts"] = len(linked)
+    checked = "checked" if wf["enabled"] else ""
+    label = "active" if wf["enabled"] else "off"
+    return HTMLResponse(f"""<tr>
+        <td><a href="/workflows/{wf['id']}"><strong>{wf['name']}</strong></a></td>
+        <td style="font-size:0.82rem; color:var(--text-secondary);">{(wf['description'] or '')[:80]}</td>
+        <td>{wf['step_count']}</td>
+        <td>{wf['linked_contacts']}</td>
+        <td>
+            <label style="display:flex; align-items:center; gap:0.3rem; margin:0; cursor:pointer; font-size:0.8rem;">
+                <input type="checkbox" {checked}
+                       hx-post="/workflows/{wf['id']}/toggle-enabled"
+                       hx-target="closest tr" hx-swap="outerHTML"
+                       style="width:auto; margin:0;">
+                {label}
+            </label>
+        </td>
+        <td><a href="/workflows/{wf['id']}" class="outline" style="padding:2px 8px; font-size:0.75rem;">Edit</a></td>
+    </tr>""")
+    return RedirectResponse("/workflows", status_code=303)
+
+
 @router.get("/workflows/{workflow_id}", response_class=HTMLResponse)
 async def workflow_detail(request: Request, workflow_id: int):
     wf = await db.get_workflow_with_steps(workflow_id)
@@ -776,50 +836,15 @@ async def update_workflow_step(
         condition=condition, enabled=enabled,
     )
     if request.headers.get("HX-Request"):
-        wf = await db.get_workflow_with_steps(workflow_id)
-        step = next((s for s in wf["steps"] if s["id"] == step_id), None)
-        if step:
-            return HTMLResponse(f"""<tr>
-                <td>{step['step_order']}</td>
-                <td><code>{step['step_type']}</code></td>
-                <td>
-                    <form method="post" action="/workflows/{workflow_id}/steps/{step_id}"
-                          hx-post="/workflows/{workflow_id}/steps/{step_id}"
-                          hx-target="closest tr" hx-swap="outerHTML"
-                          style="display:flex; gap:0.4rem; align-items:center; margin:0;">
-                        <input type="text" name="label" value="{step['label']}" placeholder="Label"
-                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; min-width:100px;">
-                </td>
-                <td>
-                        <input type="text" name="condition" value="{step['condition']}" placeholder="(none)"
-                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; width:120px;">
-                </td>
-                <td>
-                        <input type="text" name="config_json" value='{step['config_json']}' placeholder='{{}}'
-                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.75rem; font-family:monospace; min-width:200px;">
-                </td>
-                <td>
-                        <input type="hidden" name="enabled" value="0">
-                        <input type="checkbox" name="enabled" value="1" {'checked' if step['enabled'] else ''}
-                               style="width:auto; margin:0;">
-                </td>
-                <td style="white-space:nowrap;">
-                        <button type="submit" style="padding:2px 6px; font-size:0.7rem; margin:0;">Save</button>
-                    </form>
-                    <form method="post" action="/workflows/{workflow_id}/steps/{step_id}"
-                          style="display:inline; margin:0;"
-                          hx-delete="/workflows/{workflow_id}/steps/{step_id}"
-                          hx-confirm="Remove this step?">
-                        <button type="submit" class="outline secondary" style="padding:2px 6px; font-size:0.7rem; margin:0;">✕</button>
-                    </form>
-                </td>
-            </tr>""")
+        return HTMLResponse("", headers={"HX-Redirect": f"/workflows/{workflow_id}"})
     return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
 
 
 @router.delete("/workflows/{workflow_id}/steps/{step_id}")
 async def delete_workflow_step(request: Request, workflow_id: int, step_id: int):
     await db.delete_workflow_step(step_id)
+    if request.headers.get("HX-Request"):
+        return HTMLResponse("", headers={"HX-Redirect": f"/workflows/{workflow_id}"})
     return RedirectResponse(f"/workflows/{workflow_id}", status_code=303)
 
 

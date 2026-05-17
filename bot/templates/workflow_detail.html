@@ -40,13 +40,13 @@
     <table id="steps-table">
         <thead>
             <tr>
-                <th>#</th>
-                <th>Type</th>
-                <th>Label</th>
-                <th>Condition</th>
-                <th>Config</th>
-                <th>Active</th>
-                <th>Actions</th>
+                <th style="width:3%;">#</th>
+                <th style="width:10%;">Type</th>
+                <th style="width:20%;">Label</th>
+                <th style="width:14%;">Condition</th>
+                <th style="width:28%;">Config</th>
+                <th style="width:5%;">On</th>
+                <th style="width:20%;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -55,35 +55,36 @@
                 <td>{{ step.step_order }}</td>
                 <td><code>{{ step.step_type }}</code></td>
                 <td>
-                    <form method="post" action="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
-                          hx-post="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
-                          hx-target="closest tr" hx-swap="outerHTML"
-                          style="display:flex; gap:0.4rem; align-items:center; margin:0;">
-                        <input type="text" name="label" value="{{ step.label }}" placeholder="Label"
-                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; min-width:100px;">
+                    <input type="text" name="label" value="{{ step.label }}" placeholder="Label"
+                           style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem;">
                 </td>
                 <td>
-                        <input type="text" name="condition" value="{{ step.condition }}" placeholder="(none)"
-                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem; width:120px;">
+                    <select name="condition" style="margin:0; padding:0.2rem 0.4rem; font-size:0.8rem;">
+                        <option value=""{% if not step.condition %} selected{% endif %}>(none)</option>
+                        <option value="has_audio"{% if step.condition == 'has_audio' %} selected{% endif %}>has_audio</option>
+                        <option value="has_text"{% if step.condition == 'has_text' %} selected{% endif %}>has_text</option>
+                        <option value="mode_voice"{% if step.condition == 'mode_voice' %} selected{% endif %}>mode_voice</option>
+                        <option value="mode_auto_voice"{% if step.condition == 'mode_auto_voice' %} selected{% endif %}>mode_auto_voice</option>
+                    </select>
                 </td>
                 <td>
-                        <input type="text" name="config_json" value='{{ step.config_json }}' placeholder='{}'
-                               style="margin:0; padding:0.2rem 0.4rem; font-size:0.75rem; font-family:monospace; min-width:200px;">
+                    <input type="text" name="config_json" value='{{ step.config_json or "{}" }}' placeholder='{}'
+                           style="margin:0; padding:0.2rem 0.4rem; font-size:0.75rem; font-family:monospace;">
                 </td>
-                <td>
-                        <input type="hidden" name="enabled" value="0">
-                        <input type="checkbox" name="enabled" value="1" {% if step.enabled %}checked{% endif %}
-                               style="width:auto; margin:0;">
+                <td style="text-align:center;">
+                    <input type="hidden" name="enabled" value="0">
+                    <input type="checkbox" name="enabled" value="1" {% if step.enabled %}checked{% endif %}
+                           style="width:auto; margin:0;">
                 </td>
                 <td style="white-space:nowrap;">
-                        <button type="submit" style="padding:2px 6px; font-size:0.7rem; margin:0;">Save</button>
-                    </form>
-                    <form method="post" action="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
-                          style="display:inline; margin:0;"
-                          hx-delete="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
-                          hx-confirm="Remove this step?">
-                        <button type="submit" class="outline secondary" style="padding:2px 6px; font-size:0.7rem; margin:0;">✕</button>
-                    </form>
+                    <button type="button" style="padding:2px 6px; font-size:0.7rem; margin:0; display:inline-block;"
+                            hx-post="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
+                            hx-include="closest tr"
+                            hx-target="closest tr" hx-swap="outerHTML">Save</button>
+                    <button type="button" class="outline secondary" style="padding:2px 6px; font-size:0.7rem; margin:0; display:inline-block;"
+                            hx-delete="/workflows/{{ workflow.id }}/steps/{{ step.id }}"
+                            hx-confirm="Remove this step?"
+                            hx-target="#steps-table tbody">✕</button>
                 </td>
             </tr>
             {% endfor %}
@@ -119,7 +120,13 @@
                 </div>
                 <div>
                     <label style="font-size:0.72rem;">Condition</label>
-                    <input type="text" name="condition" placeholder="(none)" style="margin:0; width:120px;">
+                    <select name="condition" style="margin:0; width:140px;">
+                        <option value="">(none)</option>
+                        <option value="has_audio">has_audio</option>
+                        <option value="has_text">has_text</option>
+                        <option value="mode_voice">mode_voice</option>
+                        <option value="mode_auto_voice">mode_auto_voice</option>
+                    </select>
                 </div>
                 <button type="submit" style="margin:0;">Add</button>
             </div>

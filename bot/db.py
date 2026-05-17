@@ -230,8 +230,8 @@ async def _init_tables(db: aiosqlite.Connection):
             )
     await db.commit()
 
-    # Seed default workflow if none exist
-    await seed_default_workflow()
+    # Seed default workflows if none exist
+    await seed_default_workflows()
 
 
 # ---- Chat helpers ----
@@ -616,12 +616,12 @@ async def is_whitelisted(
 
 # ---- Workflow helpers ----
 
-async def create_workflow(name: str, description: str = "") -> int:
+async def create_workflow(name: str, description: str = "", enabled: int = 0) -> int:
     db = await get_db()
     now = time.time()
     cursor = await db.execute(
-        "INSERT INTO workflows (name, description, enabled, created_at) VALUES (?,?,1,?)",
-        (name, description, now),
+        "INSERT INTO workflows (name, description, enabled, created_at) VALUES (?,?,?,?)",
+        (name, description, enabled, now),
     )
     await db.commit()
     return cursor.lastrowid  # type: ignore[return-value]
@@ -729,6 +729,17 @@ async def get_workflows_for_whitelist(whitelist_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def get_workflows_for_whitelist_entry(whitelist_id: int) -> list[dict]:
+    """Get ALL workflows linked to a whitelist entry (regardless of enabled)."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT w.* FROM workflows w JOIN whitelist_workflows ww ON w.id=ww.workflow_id "
+        "WHERE ww.whitelist_id=? ORDER BY w.name",
+        (whitelist_id,),
+    )
+    return [dict(r) for r in rows]
+
+
 async def get_whitelist_entries_for_workflow(workflow_id: int) -> list[dict]:
     db = await get_db()
     rows = await db.execute_fetchall(
@@ -783,21 +794,38 @@ async def get_workflow_logs(
     return [dict(r) for r in rows]
 
 
-async def seed_default_workflow():
-    """Create a default workflow if none exist."""
+async def seed_default_workflows():
+    """Create default workflows if none exist."""
+    from bot.config import settings
+    import json
     db = await get_db()
     rows = await db.execute_fetchall("SELECT COUNT(*) as cnt FROM workflows")
     if rows[0]["cnt"] > 0:
         return
-    wf_id = await create_workflow(
-        "Default Voice Bot",
-        "Transcribe audio, process with LLM, save, reply with text and optional audio",
+
+    llm_config = json.dumps({"prompt": settings.default_system_prompt})
+
+    # Default Text Bot — processes text messages only
+    wf1 = await create_workflow(
+        "Default Text Bot",
+        "Process text messages with LLM and reply with text",
+        enabled=0,
     )
-    await add_workflow_step(wf_id, 1, "transcribe", label="Transcribe Audio", condition="has_audio")
-    await add_workflow_step(wf_id, 2, "llm", label="Process with LLM", config_json='{"prompt": ""}')
-    await add_workflow_step(wf_id, 3, "save", label="Save to Database")
-    await add_workflow_step(wf_id, 4, "reply_text", label="Reply with Text")
-    await add_workflow_step(wf_id, 5, "reply_audio", label="Reply with Audio", condition="mode_auto_voice")
+    await add_workflow_step(wf1, 1, "llm", label="Process with LLM", config_json=llm_config, condition="has_text")
+    await add_workflow_step(wf1, 2, "save", label="Save to Database")
+    await add_workflow_step(wf1, 3, "reply_text", label="Reply with Text", condition="has_text")
+
+    # Default Mixed Bot — handles both text and voice input
+    wf2 = await create_workflow(
+        "Default Mixed Bot",
+        "Transcribe audio if present, process with LLM, reply with text (and audio for voice messages)",
+        enabled=0,
+    )
+    await add_workflow_step(wf2, 1, "transcribe", label="Transcribe Audio", condition="has_audio")
+    await add_workflow_step(wf2, 2, "llm", label="Process with LLM", config_json=llm_config)
+    await add_workflow_step(wf2, 3, "save", label="Save to Database")
+    await add_workflow_step(wf2, 4, "reply_text", label="Reply with Text")
+    await add_workflow_step(wf2, 5, "reply_audio", label="Reply with Audio", condition="mode_auto_voice")
 
 
 # ---- Database maintenance ----

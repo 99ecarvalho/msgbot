@@ -311,6 +311,10 @@ article.card {
 
 table { font-size: 0.82rem; border-collapse: collapse; width: 100%; }
 
+#steps-table { table-layout: fixed; }
+#steps-table td, #steps-table th { overflow: hidden; text-overflow: ellipsis; }
+#steps-table input, #steps-table select { width: 100%; box-sizing: border-box; }
+
 table th {
     font-weight: 600;
     text-transform: uppercase;
