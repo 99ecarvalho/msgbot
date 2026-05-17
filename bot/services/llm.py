@@ -1,28 +1,84 @@
-"""Azure OpenAI LLM client."""
+"""LLM client supporting Azure OpenAI and Azure-hosted Anthropic models."""
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import structlog
-from openai import AsyncAzureOpenAI
 
 from bot.config import settings
 from bot import db
 
 log = structlog.get_logger("services.llm")
 
-_client: AsyncAzureOpenAI | None = None
+_openai_client: Any = None
+_anthropic_client: Any = None
 
 
-def _get_client() -> AsyncAzureOpenAI:
-    global _client
-    if _client is None:
-        _client = AsyncAzureOpenAI(
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        from openai import AsyncAzureOpenAI
+        _openai_client = AsyncAzureOpenAI(
             azure_endpoint=settings.azure_openai_endpoint,
             api_key=settings.azure_openai_api_key,
             api_version=settings.azure_openai_api_version,
         )
-    return _client
+    return _openai_client
+
+
+def _get_anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        from anthropic import AsyncAnthropic
+        _anthropic_client = AsyncAnthropic(
+            base_url=settings.azure_openai_endpoint.rstrip("/") + "/anthropic",
+            api_key="unused",
+            default_headers={
+                "Authorization": f"Bearer {settings.azure_openai_api_key}",
+            },
+        )
+    return _anthropic_client
+
+
+async def _chat(
+    system_prompt: str,
+    user_message: str,
+) -> tuple[str, int, int, int, int, str]:
+    """Route to the configured provider and return (reply, prompt_tok, compl_tok, total_tok, elapsed_ms, model)."""
+    t0 = time.monotonic()
+
+    if settings.llm_provider == "azure_anthropic":
+        client = _get_anthropic_client()
+        resp = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        result = resp.content[0].text if resp.content else ""
+        prompt_tokens = resp.usage.input_tokens
+        completion_tokens = resp.usage.output_tokens
+        total_tokens = prompt_tokens + completion_tokens
+        model_name = settings.anthropic_model
+    else:
+        client = _get_openai_client()
+        resp = await client.chat.completions.create(
+            model=settings.azure_openai_deployment_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        result = resp.choices[0].message.content or ""
+        usage = resp.usage
+        prompt_tokens = usage.prompt_tokens if usage else 0
+        completion_tokens = usage.completion_tokens if usage else 0
+        total_tokens = usage.total_tokens if usage else 0
+        model_name = settings.azure_openai_deployment_name
+
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    return result, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, model_name
 
 
 async def process_voice_message(
@@ -32,32 +88,19 @@ async def process_voice_message(
     sender_phone: str = "",
 ) -> str:
     """Process a transcribed voice message through the LLM."""
-    client = _get_client()
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": transcription},
-    ]
-    t0 = time.monotonic()
-    resp = await client.chat.completions.create(
-        model=settings.azure_openai_deployment_name,
-        messages=messages,
+    result, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, model_name = (
+        await _chat(system_prompt, transcription)
     )
-    elapsed_ms = int((time.monotonic() - t0) * 1000)
-    result = resp.choices[0].message.content or ""
-    usage = resp.usage
-    prompt_tokens = usage.prompt_tokens if usage else 0
-    completion_tokens = usage.completion_tokens if usage else 0
-    total_tokens = usage.total_tokens if usage else 0
     log.info(
         "llm_response",
         input_len=len(transcription),
         output_len=len(result),
-        model=settings.azure_openai_deployment_name,
+        model=model_name,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
     )
     await db.save_llm_log(
-        model=settings.azure_openai_deployment_name,
+        model=model_name,
         system_prompt=system_prompt,
         user_message=transcription,
         assistant_reply=result,
@@ -78,8 +121,6 @@ async def process_forwarded_audio(
     sender_phone: str = "",
 ) -> str:
     """Process a forwarded audio transcription with a user-provided instruction."""
-    client = _get_client()
-
     system = (
         "You receive transcriptions of audio messages that were forwarded to you. "
         "Follow the user's instruction about what to do with the transcription."
@@ -88,21 +129,9 @@ async def process_forwarded_audio(
         f"## Instruction\n{user_instruction}\n\n"
         f"## Audio Transcription\n{transcription}"
     )
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_content},
-    ]
-    t0 = time.monotonic()
-    resp = await client.chat.completions.create(
-        model=settings.azure_openai_deployment_name,
-        messages=messages,
+    result, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, model_name = (
+        await _chat(system, user_content)
     )
-    elapsed_ms = int((time.monotonic() - t0) * 1000)
-    result = resp.choices[0].message.content or ""
-    usage = resp.usage
-    prompt_tokens = usage.prompt_tokens if usage else 0
-    completion_tokens = usage.completion_tokens if usage else 0
-    total_tokens = usage.total_tokens if usage else 0
     log.info(
         "llm_forwarded_response",
         transcription_len=len(transcription),
@@ -112,7 +141,7 @@ async def process_forwarded_audio(
         completion_tokens=completion_tokens,
     )
     await db.save_llm_log(
-        model=settings.azure_openai_deployment_name,
+        model=model_name,
         system_prompt=system,
         user_message=user_content,
         assistant_reply=result,

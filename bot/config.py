@@ -7,11 +7,17 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # --- LLM provider: "azure_openai" or "azure_anthropic" ---
+    llm_provider: str = "azure_openai"
+
     # --- Azure OpenAI ---
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     azure_openai_deployment_name: str = "gpt-4.1"
     azure_openai_api_version: str = "2024-12-01-preview"
+
+    # --- Azure-hosted Anthropic ---
+    anthropic_model: str = "claude-opus-4-6"
 
     # --- Messaging API Keys ---
     telegram_bot_token: str = ""

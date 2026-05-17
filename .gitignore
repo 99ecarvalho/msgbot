@@ -5,3 +5,7 @@
 .env
 
 __pycache__/
+
+# Generated/local artifacts
+CODEBASE_REPORT.md
+upstream/
