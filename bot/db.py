@@ -827,6 +827,26 @@ async def seed_default_workflows():
     await add_workflow_step(wf2, 4, "reply_text", label="Reply with Text")
     await add_workflow_step(wf2, 5, "reply_audio", label="Reply with Audio", condition="mode_auto_voice")
 
+    # Audio Summary Bot — transcribes audio, summarizes with executive paragraph + bullet points
+    summary_prompt = json.dumps({"prompt": (
+        "Você é um assistente especializado em resumir mensagens de voz. "
+        "Ao receber a transcrição de um áudio, produza:\n"
+        "1. Um parágrafo executivo curto (2-3 frases) com o ponto principal.\n"
+        "2. Bullet points com os detalhes relevantes.\n\n"
+        "Responda sempre em português. Seja conciso e objetivo."
+    )})
+    wf3 = await create_workflow(
+        "Audio Summary Bot",
+        "Transcreve áudio, resume com parágrafo executivo + bullet points, responde texto e áudio",
+        enabled=0,
+    )
+    await add_workflow_step(wf3, 1, "transcribe", label="Transcrever Áudio", condition="has_audio")
+    await add_workflow_step(wf3, 2, "reply_text", label="Enviar Transcrição")
+    await add_workflow_step(wf3, 3, "llm", label="Resumir com LLM", config_json=summary_prompt)
+    await add_workflow_step(wf3, 4, "save", label="Salvar no Banco")
+    await add_workflow_step(wf3, 5, "reply_text", label="Responder Resumo")
+    await add_workflow_step(wf3, 6, "reply_audio", label="Responder Áudio (TTS)")
+
 
 # ---- Database maintenance ----
 
