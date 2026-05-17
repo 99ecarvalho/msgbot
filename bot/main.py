@@ -22,6 +22,16 @@ log = structlog.get_logger("main")
 # Track background tasks to prevent GC
 _background_tasks: set = set()
 
+
+def _task_done(task: asyncio.Task):
+    """Log exceptions from background webhook tasks."""
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        log.error("background_task_failed", error=str(exc), exc_info=exc)
+
 # Configure structlog
 structlog.configure(
     processors=[
@@ -122,7 +132,7 @@ async def whatsapp_webhook(request: Request):
     data = await request.json()
     task = asyncio.create_task(handle_wa_webhook(data))
     _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_task_done)
     return {"ok": True}
 
 
