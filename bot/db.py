@@ -829,11 +829,15 @@ async def seed_default_workflows():
 
     # Audio Summary Bot — transcribes audio, summarizes with executive paragraph + bullet points
     summary_prompt = json.dumps({"prompt": (
-        "Você é um assistente especializado em resumir mensagens de voz. "
-        "Ao receber a transcrição de um áudio, produza:\n"
-        "1. Um parágrafo executivo curto (2-3 frases) com o ponto principal.\n"
-        "2. Bullet points com os detalhes relevantes.\n\n"
-        "Responda sempre em português. Seja conciso e objetivo."
+        "Voce eh um assistente especializado em resumir mensagens de voz. "
+        "Ao receber a transcricao de um audio, produza: "
+        "1. Um paragrafo executivo curto (2-3 frases) com os pontos principais. "
+        "2. Caso seja necessario, use mais paragrafos para completar as ideias que faltaram. "
+        "3. Responda sempre em portugues. Seja conciso e objetivo. "
+        "Nao escreva 'resumo executivo', de somente o conteudo. "
+        "Seja absurdamente direto, nao precisa sequer usar portugues formal - "
+        "use abreviacoes e tudo para que a leitura seja RAPIDA. "
+        "O objetivo é permitir que alguém entenda em menos de 15 segundos de leitura."
     )})
     wf3 = await create_workflow(
         "Audio Summary Bot",
