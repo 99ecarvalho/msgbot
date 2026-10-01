@@ -259,6 +259,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 | [QUICKSTART.md](QUICKSTART.md) | Step-by-step setup, Telegram, and deployment |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Deployment security and reporting vulnerabilities |
+| [CODEBASE_REPORT.md](CODEBASE_REPORT.md) | Code walkthrough: modules, message flow, database, and quality review |
 | [doc/evolution/](doc/evolution/README.md) | Evolution API: instances, JID formats, messaging, webhooks, troubleshooting |
 
 ## Contributing
