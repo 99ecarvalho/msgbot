@@ -1,236 +1,297 @@
-# MsgBot — WhatsApp & Telegram Voice Bot
+# 🎙️ MsgBot
 
-Voice-driven bot for WhatsApp and Telegram. Send voice messages or forward audios — the bot transcribes them (Whisper), processes with an LLM (Azure OpenAI), and replies with text or a TTS voice note (Piper).
+[![License: LGPL v3+](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue.svg)](COPYING.LESSER)
 
-Includes a web UI for QR code pairing, message history with audio playback, live logs, and configuration.
+A self-hosted voice bot for WhatsApp and Telegram. Send it a voice note, or
+forward it any audio, and it transcribes the audio (Whisper), processes the
+text with an LLM (Azure OpenAI, or Anthropic models hosted on Azure), and
+replies with text, a spoken voice note (Piper TTS), or both. What happens to
+each message is defined by **workflows** you build in the web UI, and only
+the contacts and groups you allow get a response.
 
-## Architecture
+Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
 
-```
-                  webhook              webhook
-  Evolution API ──────────► Python Bot ◄──────── Telegram Bot API
-   (WhatsApp)               (FastAPI)
-                            │       │
-                    Web UI ◄┘       └► SQLite + Audio files
-                (Jinja2+HTMX)
-                            │
-            ┌───────────────┼───────────────┐
-            ▼               ▼               ▼
-       Transcriber      Azure OpenAI      TTS
-    (Faster-Whisper)     (GPT-4.1)     (Piper)
-```
-
-## Services & Ports
-
-| Service | Host Port | Internal Port | Description |
-|---------|-----------|---------------|-------------|
-| **Bot (Web UI + Webhooks)** | `8088` | `8000` | FastAPI app — dashboard, QR page, message history, config, logs |
-| **Evolution API** | `8085` | `8080` | WhatsApp bridge (Baileys) — REST API for sending/receiving messages |
-| **Transcriber** | `8001` | `8000` | Faster-Whisper — GPU-accelerated speech-to-text |
-| **TTS** | `8002` | `8000` | Piper TTS — text-to-speech (PT-BR default voice) |
-| **PostgreSQL** | — | `5432` | Database for Evolution API (internal only) |
-
-## Prerequisites
-
-### Create a Telegram Bot
-
-1. Open Telegram and search for **@BotFather** (the official bot for creating bots).
-2. Send `/newbot`.
-3. Choose a **display name** for your bot (e.g. "My Voice Bot").
-4. Choose a **username** — must end in `bot` (e.g. `my_voice_bot` or `MyVoiceBot`).
-5. BotFather replies with your **bot token** — a string like `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`. Copy it.
-6. (Optional) Customize your bot with BotFather commands:
-   - `/setdescription` — short description shown when users first open the bot
-   - `/setabouttext` — text shown in the bot's profile
-   - `/setuserpic` — upload a profile picture
-
-> **Keep the token secret.** Anyone with it can control your bot.
-
-### Azure OpenAI
-
-1. Create an Azure OpenAI resource at https://portal.azure.com.
-2. Deploy a model (e.g. `gpt-4.1`) in Azure AI Studio.
-3. Copy the **Endpoint**, **API Key**, and **Deployment Name** from the resource.
-
-### Why You Need a Public URL (VPS)
-
-Telegram sends messages to your bot via **webhooks** — Telegram's servers make HTTPS requests to a URL you provide. This means your bot **must be reachable from the internet**. Running on `localhost` alone will not work for Telegram.
-
-**WhatsApp** (Evolution API) communicates with the bot over the internal Docker network, so it works on localhost. But if you also want Telegram, you need to deploy to a server with a public IP.
-
-The recommended approach is to deploy to a VPS. If you only need WhatsApp, you can run everything locally.
-
-## Quick Start — Local (WhatsApp only)
-
-If you only need WhatsApp and don't need Telegram, you can run entirely on localhost.
-
-### 1. Configure environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```env
-# Azure OpenAI (required)
-AZURE_OPENAI_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
-AZURE_OPENAI_API_KEY=your-key
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4.1
-
-# Leave TELEGRAM_BOT_TOKEN empty to skip Telegram
-TELEGRAM_BOT_TOKEN=
-
-# Evolution API key — pick any strong password
-# Generate with: openssl rand -hex 32
-EVOLUTION_API_KEY=$(openssl rand -hex 32)
-
-# For local-only, BOT_URL points to the bot inside Docker network
-BOT_URL=http://bot:8000
-```
-
-### 2. Build & Run
-
-```bash
-./build.sh        # docker compose build
-./run.sh           # docker compose up
-# or in detached mode:
-./run.sh -d
-```
-
-### 3. Access
-
-- **Web UI**: http://localhost:8088
-- **WhatsApp QR**: http://localhost:8088/qr — scan to link your WhatsApp
-- **Evolution API**: http://localhost:8085 (direct access if needed)
-
-## Quick Start — VPS (Telegram + WhatsApp)
-
-Deploy to a VPS so Telegram can reach your bot via webhooks.
-
-### 1. Configure environment (locally)
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your real values:
-
-```env
-# Azure OpenAI
-AZURE_OPENAI_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
-AZURE_OPENAI_API_KEY=your-key
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4.1
-
-# Telegram token from @BotFather (see Prerequisites above)
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-
-# Evolution API key
-EVOLUTION_API_KEY=$(openssl rand -hex 32)
-
-# Public URL — your VPS IP or domain, port 8088
-# If you have a domain pointed at your VPS:
-BOT_URL=https://your-domain.com:8088
-# If using just the IP (HTTP, no TLS — Telegram requires HTTPS, see note below):
-# BOT_URL=https://your-vps-ip:8088
-```
-
-> **Telegram requires HTTPS** for webhooks. Options:
-> - Put a reverse proxy (Caddy, nginx) in front with a real domain + automatic TLS
-> - Use a self-signed certificate (Telegram supports this — see [Telegram webhook guide](https://core.telegram.org/bots/webhooks))
-> - Use Caddy (simplest — automatic HTTPS with Let's Encrypt, zero config)
-
-### 2. Deploy to VPS
-
-```bash
-# Sync project files to VPS
-rsync -avz --exclude '.env' --exclude '__pycache__' --exclude '.git' \
-  ./ your-server:~/msgbot/
-
-# Copy your .env separately (so it doesn't get overwritten on redeploys)
-scp .env your-server:~/msgbot/.env
-```
-
-### 3. Build & Run on VPS
-
-```bash
-ssh your-server
-cd ~/msgbot
-./build.sh
-./run.sh -d
-```
-
-### 4. Access
-
-- **Web UI**: http://your-vps-ip:8088
-- **WhatsApp QR**: http://your-vps-ip:8088/qr
-- **Logs**: http://your-vps-ip:8088/logs
-
-### Redeploying after changes
-
-```bash
-# From your local machine:
-rsync -avz --exclude '.env' --exclude '__pycache__' --exclude '.git' \
-  ./ your-server:~/msgbot/
-
-ssh your-server "cd ~/msgbot && docker compose build bot && docker compose up -d bot"
-```
-
-## Web UI Pages
-
-| Page | URL | Description |
-|------|-----|-------------|
-| Dashboard | `/` | Service health status, message stats, recent messages |
-| WhatsApp QR | `/qr` | QR code for pairing (auto-refreshes via WebSocket) |
-| Messages | `/messages` | Message history with audio playback, filterable by platform/chat |
-| Config | `/config` | System prompt, response mode, per-chat overrides |
-| Logs | `/logs` | Live log stream (WebSocket), filterable by level |
-
-## Bot Commands
-
-Available in both Telegram and WhatsApp:
-
-| Command | Description |
-|---------|-------------|
-| `/mode voice\|text\|auto` | Set response mode (auto = voice reply to voice, text to text) |
-| `/prompt <text>` | Set custom system prompt for this chat |
-| `/help` | Show available commands |
+- [Features](#features)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [Workflows](#workflows)
+- [Access control](#access-control)
+- [Web UI](#web-ui)
+- [Bot commands](#bot-commands)
+- [Security](#security)
+- [Development](#development)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
-- **Voice messages**: Send a voice note → transcribed → LLM response → text + optional TTS reply
-- **Forwarded audio**: Forward any audio → transcribed → analyzed with your configurable prompt
-- **Text messages**: Regular text is also processed through the LLM
-- **Per-chat config**: Each chat can have its own system prompt and response mode
-- **Audio storage**: All received and generated audio files are saved and playable from the web UI
+- **WhatsApp and Telegram**: WhatsApp through a self-hosted
+  [Evolution API](https://github.com/EvolutionAPI/evolution-api) (pair with a
+  QR code in the web UI), Telegram through a bot token from @BotFather.
+- **Voice in, voice out**: voice notes and forwarded audio are transcribed;
+  replies can be text, a TTS voice note, or both.
+- **Workflows**: ordered steps (transcribe, LLM, reply with text, reply with
+  audio, save) with conditions, edited in the web UI and assigned to
+  contacts or groups.
+- **Access control**: a whitelist of people, groups, and people within a
+  group. Everything is logged; only whitelisted chats trigger workflows.
+- **Per-chat settings**: each chat can have its own system prompt and
+  response mode.
+- **Two LLM providers**: Azure OpenAI deployments (default) or Anthropic
+  models served from Azure AI Foundry.
+- **Web UI**: dashboard, QR pairing, message history with audio playback,
+  statistics, live logs, LLM call logs with token usage, and tools to try
+  transcription and TTS by hand.
+- **Everything stored locally**: messages, audio, and logs live in SQLite
+  and on a Docker volume.
 
-## Project Structure
+## Architecture
 
+```text
+                  webhook               webhook
+  Evolution API ───────────► MsgBot ◄─────────── Telegram Bot API
+   (WhatsApp)              (FastAPI)
+                            │     │
+                 Web UI  ◄──┘     └──► SQLite + audio files
+              (Jinja2 + HTMX)
+                            │
+            ┌───────────────┼───────────────┐
+            ▼               ▼               ▼
+       Transcriber         LLM             TTS
+    (faster-whisper)  (Azure OpenAI /    (Piper)
+                       Anthropic)
 ```
-bot/
-├── main.py                 # FastAPI app — webhooks, lifecycle, static files
-├── config.py               # Pydantic Settings (env-based)
-├── db.py                   # SQLite (aiosqlite) — chats, messages, config, logs
-├── utils.py                # Audio save, WAV→OGG Opus conversion (ffmpeg)
-├── handlers/
-│   ├── telegram.py         # Telegram voice/audio/text handling
-│   └── whatsapp.py         # WhatsApp via Evolution API webhooks
-├── services/
-│   ├── transcriber.py      # Whisper HTTP client
-│   ├── tts.py              # Piper TTS HTTP client
-│   ├── llm.py              # Azure OpenAI client
-│   └── evolution.py        # Evolution API client (instance, QR, messaging)
-├── web/
-│   ├── routes.py           # Web UI routes (dashboard, QR, messages, config, logs)
-│   └── ws.py               # WebSocket endpoints (live logs, QR updates)
-├── templates/              # Jinja2 + HTMX (Pico CSS dark theme)
-└── static/                 # CSS + JS
-```
+
+`docker compose` starts these services:
+
+| Service | Host port | Internal port | Description |
+| ------- | --------- | ------------- | ----------- |
+| **bot** | `8088` | `8000` | This project: web UI and webhooks |
+| **evolution-api** | `8085` | `8080` | WhatsApp bridge, Evolution API v2.2.3 with the patches in `docker/evolution/` |
+| **postgres** | (none) | `5432` | Database for Evolution API (internal only) |
+| **transcriber** | `8001` | `8000` | Speech-to-text service (external, see below) |
+| **tts** | `8002` | `8000` | Text-to-speech service (external, see below) |
 
 ## Requirements
 
-- Docker with Compose v2
-- NVIDIA GPU + nvidia-container-toolkit (for Whisper transcriber)
-- Azure OpenAI API access (endpoint + key)
-- **For Telegram**: a VPS or server with a public IP + HTTPS (Telegram webhooks require a reachable URL)
-- **For WhatsApp only**: localhost is fine (Evolution API uses internal Docker networking)
+- Docker with Compose v2.
+- An NVIDIA GPU and the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)
+  for the Whisper transcriber.
+- An Azure OpenAI resource with a deployed model (endpoint, key, and
+  deployment name).
+- **For Telegram**: a server reachable from the internet over HTTPS,
+  because Telegram delivers messages by webhook. WhatsApp alone works on
+  localhost.
+- **A transcriber and a TTS service.** These are not part of this
+  repository: `docker-compose.yml` builds them from
+  `../company-manager/framework/transcriber` and
+  `../company-manager/framework/tts`. Point those `build.context` entries at
+  your own services, which only need to provide:
+
+  | Service | Endpoint | Request | Response |
+  | ------- | -------- | ------- | -------- |
+  | Transcriber | `POST /transcribe` | multipart `file`, plus optional `language`, `vad_filter`, `beam_size` | JSON with `text`, `language`, `audio_duration_sec`, `elapsed_ms` |
+  | TTS | `POST /synthesize` | JSON `{"text": "...", "voice": "..."}` (`voice` optional) | WAV audio |
+  | Both | `GET /health` | | JSON with `status` |
+
+  A small FastAPI wrapper around
+  [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and
+  [Piper](https://github.com/rhasspy/piper) is enough.
+
+## Getting started
+
+```bash
+git clone https://github.com/99ecarvalho/msgbot.git
+cd msgbot
+cp .env.example .env     # then fill in your keys
+./build.sh               # docker compose build
+./run.sh -d              # docker compose up -d
+```
+
+Open <http://localhost:8088>, go to **WhatsApp QR**, and scan the code with
+WhatsApp (*Linked devices → Link a device*). Then whitelist yourself and
+enable a workflow.
+
+[QUICKSTART.md](QUICKSTART.md) walks through each step, including creating a
+Telegram bot and deploying to a server.
+
+## Configuration
+
+All settings are environment variables, read from `.env`
+(see [.env.example](.env.example)):
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `AZURE_OPENAI_ENDPOINT` | | Azure resource endpoint, e.g. `https://your-resource.cognitiveservices.azure.com/` |
+| `AZURE_OPENAI_API_KEY` | | Azure API key |
+| `AZURE_OPENAI_DEPLOYMENT_NAME` | `gpt-4.1` | Model deployment used for chat |
+| `AZURE_OPENAI_API_VERSION` | `2024-12-01-preview` | Azure OpenAI API version |
+| `LLM_PROVIDER` | `azure_openai` | `azure_openai`, or `azure_anthropic` for Anthropic models on the same Azure endpoint |
+| `ANTHROPIC_MODEL` | `claude-opus-4-6` | Model name when `LLM_PROVIDER=azure_anthropic` |
+| `TELEGRAM_BOT_TOKEN` | | Token from @BotFather; leave empty to disable Telegram |
+| `EVOLUTION_API_KEY` | | A password you choose to protect Evolution API (`openssl rand -hex 32`) |
+| `EVOLUTION_API_URL` | `http://evolution-api:8080` | Evolution API address |
+| `EVOLUTION_INSTANCE_NAME` | `msgbot` | WhatsApp instance name in Evolution API |
+| `TRANSCRIBER_URL` | `http://transcriber:8000` | Transcriber address |
+| `TTS_URL` | `http://tts:8000` | TTS address |
+| `BOT_URL` | `http://localhost:8000` | Where webhooks reach the bot: `http://bot:8000` for WhatsApp only, your public HTTPS URL for Telegram |
+| `DEFAULT_SYSTEM_PROMPT` | `You are a helpful voice assistant. ...` | System prompt when a chat has none |
+| `RESPONSE_MODE` | `auto` | `text`, `voice`, or `auto` (voice reply to voice, text reply to text) |
+| `DATA_DIR` | `/app/data` | Where the SQLite database and audio files are stored |
+
+The system prompt and response mode can also be changed in the web UI, for
+all chats or per chat.
+
+## Workflows
+
+A workflow is an ordered list of steps that runs for each incoming message.
+Each step can have a condition, and a step is skipped when its condition is
+false.
+
+| Step | What it does |
+| ---- | ------------ |
+| `transcribe` | Sends the audio to the transcriber; the transcript becomes the current text. Optional `language` |
+| `llm` | Sends the current text to the LLM with the step's prompt; the reply becomes the current text |
+| `reply_text` | Sends the current text. Optional `template` with `{text}` and `{transcription}` placeholders |
+| `reply_audio` | Converts the current text to speech and sends it as a voice note |
+| `save` | Stores the transcription and LLM replies with the message |
+
+| Condition | True when |
+| --------- | --------- |
+| `has_audio` | The message contains audio |
+| `has_text` | There is text to process |
+| `mode_voice` | The chat's response mode is `voice` |
+| `mode_auto_voice` | The response mode is `voice`, or `auto` and the message was a voice note |
+
+Three example workflows are created on first start, all disabled: a
+**Default Text Bot**, a **Default Mixed Bot** (transcribe, LLM, reply with
+text and, for voice notes, audio), and an **Audio Summary Bot** that sends
+back a transcript and a short summary (its prompt and labels are in
+Brazilian Portuguese). Each run is logged step by step and shown on the
+workflow's page.
+
+## Access control
+
+MsgBot logs every message it receives, but **runs workflows only for
+whitelisted chats**. A whitelist entry is one of:
+
+- a **person**, for direct messages;
+- an **entire group**;
+- a **person in a group**, so the bot answers only that member.
+
+Each entry can be limited to one platform and is linked to the workflows
+that should run for it. Manage entries on the **Whitelist** page, or with the
+quick buttons on the **Messages** page.
+
+## Web UI
+
+| Page | URL | Description |
+| ---- | --- | ----------- |
+| Dashboard | `/` | Service health, message counts, recent messages |
+| WhatsApp QR | `/qr` | Pair, reconnect, or disconnect WhatsApp |
+| Messages | `/messages` | History per chat with audio playback, manual replies, and transcription |
+| Whitelist | `/whitelist` | Access control entries and their workflows |
+| Stats | `/stats` | Usage statistics per chat |
+| Workflows | `/workflows` | Create, edit, and enable workflows |
+| Tools | `/tools` | Try transcription and TTS by hand |
+| Config | `/config` | Default prompt, response mode, per-chat overrides, database maintenance |
+| Logs | `/logs` | Live log stream |
+| LLM Logs | `/llm-logs` | Every LLM call with prompt, reply, token counts, and timing |
+
+## Bot commands
+
+Available in WhatsApp and Telegram:
+
+| Command | Description |
+| ------- | ----------- |
+| `/mode voice\|text\|auto` | Set this chat's response mode |
+| `/prompt <text>` | Set this chat's system prompt |
+| `/help` | Show the commands |
+
+## Security
+
+**The web UI has no login.** Anyone who can reach port `8088` can read your
+messages, send messages as you, and unlink your WhatsApp. Keep it on a
+private network, or put it behind a reverse proxy with authentication. Read
+[SECURITY.md](SECURITY.md) before deploying, and to report a vulnerability.
+
+## Development
+
+The bot is a Python 3.11 FastAPI application. To work on it outside Docker:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+DATA_DIR=./data python -m bot.main      # http://localhost:8000
+```
+
+It still needs Evolution API, the transcriber, and the TTS service, so the
+easiest setup is to run those with `docker compose up -d evolution-api
+transcriber tts` and point the `*_URL` variables at their host ports.
+
+```text
+bot/
+├── main.py             FastAPI app: webhooks, startup, static files
+├── config.py           Settings from environment variables
+├── db.py               SQLite schema, migrations, and queries
+├── engine.py           Workflow engine: steps, conditions, execution
+├── utils.py            Audio storage and WAV to OGG Opus conversion (ffmpeg)
+├── handlers/           Incoming Telegram and WhatsApp messages
+├── services/           Clients for Evolution API, the LLM, transcriber, and TTS
+├── web/                Web UI routes and WebSocket endpoints
+├── templates/          Jinja2 + HTMX pages
+└── static/             CSS, JavaScript, vendored htmx and Pico CSS
+docker/evolution/       Evolution API image with LID patches
+doc/evolution/          Notes on the Evolution API
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
+
+## Documentation
+
+| Document | Contents |
+| -------- | -------- |
+| [QUICKSTART.md](QUICKSTART.md) | Step-by-step setup, Telegram, and deployment |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
+| [SECURITY.md](SECURITY.md) | Deployment security and reporting vulnerabilities |
+| [doc/evolution/](doc/evolution/README.md) | Evolution API: instances, JID formats, messaging, webhooks, troubleshooting |
+
+## Contributing
+
+Bug reports, documentation fixes, and code are welcome. Report bugs and
+suggest features in the [issue tracker](https://github.com/99ecarvalho/msgbot/issues),
+and please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+## License
+
+Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
+
+MsgBot is free software: you can redistribute it and/or modify it under the
+terms of the **GNU Lesser General Public License, version 3 or (at your
+option) any later version**. The license text is in
+[COPYING.LESSER](COPYING.LESSER); it supplements the GNU General Public
+License v3, included as [COPYING](COPYING).
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.
+
+### Third-party components
+
+| Component | License | Use |
+| --------- | ------- | --- |
+| [htmx](https://htmx.org/) 2.0.4 | 0BSD | Vendored in `bot/static/htmx.min.js` |
+| [Pico CSS](https://picocss.com/) 2.1.1 | MIT | Vendored in `bot/static/pico.min.css` |
+| [Evolution API](https://github.com/EvolutionAPI/evolution-api) | Apache-2.0 with additional conditions (see its LICENSE) | Docker image, patched at build time by `docker/evolution/apply-patches.js` |
+
+Python dependencies are listed in [requirements.txt](requirements.txt) and
+keep their own licenses.
+
+MsgBot is not affiliated with WhatsApp, Meta, or Telegram. Using unofficial
+WhatsApp clients such as Evolution API may break WhatsApp's terms of service;
+you are responsible for how you use it.
