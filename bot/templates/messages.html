@@ -367,7 +367,9 @@ async function transcribeAudio(btn) {
         const contentCell = row.querySelector('td:nth-last-child(3)');
         if (contentCell && data.text) {
             const p = document.createElement('p');
-            p.innerHTML = '<strong>Transcription:</strong> ' + data.text;
+            const label = document.createElement('strong');
+            label.textContent = 'Transcription:';
+            p.append(label, ' ', data.text);
             contentCell.prepend(p);
         }
         btn.textContent = '✅ Done';

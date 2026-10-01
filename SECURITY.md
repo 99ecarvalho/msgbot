@@ -86,6 +86,5 @@ are welcome.
 | Web UI | No authentication or CSRF protection. Anyone who reaches it can read messages, send messages from your account, change prompts, and unlink WhatsApp | Keep it private, or behind an authenticating proxy |
 | WhatsApp webhook | `/webhook/whatsapp` does not verify that requests come from Evolution API, so anyone who reaches it can inject fake messages | Don't expose the bot's port; only Evolution API needs to reach it, over the Docker network |
 | Telegram webhook | The webhook is registered without a `secret_token`, so requests to `/webhook/telegram` are not verified | Treat the webhook URL as public; rely on the whitelist to limit what a forged update can trigger |
-| Live logs page | Log messages, which can contain contact names chosen by the sender, are inserted into the page as HTML | Keep the web UI private |
 | LLM | Message content is sent to the LLM as-is and the reply goes back to the chat, so a sender can try prompt injection against your system prompt | Don't put secrets in system prompts; the LLM has no tools or access to other data |
 | Storage | The SQLite database and audio files are not encrypted at rest | Use disk encryption on the host |

@@ -19,7 +19,7 @@ from fastapi import APIRouter, Request, WebSocket, Form
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 from bot.config import settings
 from bot import db
@@ -59,9 +59,13 @@ def _format_phone(value: str) -> Markup:
     if "@s.whatsapp.net" in value:
         digits = value.split("@")[0]
     elif "@g.us" in value:
-        return Markup(value.split("@")[0])
+        return escape(value.split("@")[0])
     else:
         digits = value.lstrip("+")
+
+    # Anything that isn't all digits came from outside: escape it, never format it
+    if not digits.isdigit():
+        return escape(digits)
 
     # Brazilian numbers: 55 + 2-digit area + 8-9 digit number
     if digits.startswith("55") and len(digits) in (12, 13):
@@ -88,7 +92,7 @@ def _format_phone(value: str) -> Markup:
     if len(digits) > 13 and digits.isdigit():
         return Markup(f'<span class="phone-lid">{digits}</span>')
 
-    return Markup(digits)
+    return escape(digits)
 
 
 def _format_phone_plain(value: str) -> str:
@@ -384,7 +388,7 @@ async def add_whitelist(
 
     hx_target = request.headers.get("HX-Target", "")
     if hx_target == "wl-toast":
-        label = display_name or phone or group_id
+        label = escape(display_name or phone or group_id)
         return HTMLResponse(f'<div class="notice">{label} added to whitelist</div>')
 
     return await _enriched_whitelist(request)
@@ -399,17 +403,18 @@ async def quick_whitelist(request: Request):
     group_id = form.get("group_id", "").strip()
     platform = form.get("platform", "whatsapp")
     display_name = form.get("display_name", "")
+    who = escape(display_name or phone)
 
     # Check if already whitelisted
     existing = await db.get_whitelist()
     for e in existing:
         et = e.get("entry_type", "")
         if et == "person" and entry_type == "person" and e.get("phone") == phone:
-            return HTMLResponse(f'<span class="notice">{display_name or phone} already whitelisted</span>')
+            return HTMLResponse(f'<span class="notice">{who} already whitelisted</span>')
         if et == "group" and entry_type == "group" and e.get("group_id") == group_id:
             return HTMLResponse(f'<span class="notice">Group already whitelisted</span>')
         if et == "person_in_group" and entry_type == "person_in_group" and e.get("phone") == phone and e.get("group_id") == group_id:
-            return HTMLResponse(f'<span class="notice">{display_name or phone} already whitelisted in this group</span>')
+            return HTMLResponse(f'<span class="notice">{who} already whitelisted in this group</span>')
 
     await db.add_whitelist_entry(
         entry_type=entry_type,
@@ -419,7 +424,7 @@ async def quick_whitelist(request: Request):
         display_name=display_name,
         notes="Quick-added from messages",
     )
-    label = display_name or phone or group_id
+    label = escape(display_name or phone or group_id)
     return HTMLResponse(f'<span class="notice">✅ {label} whitelisted</span>')
 
 
@@ -430,7 +435,7 @@ async def quick_remove_whitelist(request: Request):
     entry_id = int(form.get("entry_id", 0))
     if entry_id:
         await db.remove_whitelist_entry(entry_id)
-    label = form.get("label", "Entry")
+    label = escape(form.get("label", "Entry"))
     return HTMLResponse(f'<span class="notice">❌ {label} removed from whitelist</span>')
 
 
@@ -754,8 +759,8 @@ async def toggle_workflow_enabled(request: Request, workflow_id: int):
     checked = "checked" if wf["enabled"] else ""
     label = "active" if wf["enabled"] else "off"
     return HTMLResponse(f"""<tr>
-        <td><a href="/workflows/{wf['id']}"><strong>{wf['name']}</strong></a></td>
-        <td style="font-size:0.82rem; color:var(--text-secondary);">{(wf['description'] or '')[:80]}</td>
+        <td><a href="/workflows/{wf['id']}"><strong>{escape(wf['name'])}</strong></a></td>
+        <td style="font-size:0.82rem; color:var(--text-secondary);">{escape((wf['description'] or '')[:80])}</td>
         <td>{wf['step_count']}</td>
         <td>{wf['linked_contacts']}</td>
         <td>

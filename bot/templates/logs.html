@@ -62,7 +62,19 @@
         entry.dataset.level = data.level;
 
         const ts = new Date(data.timestamp * 1000).toLocaleTimeString();
-        entry.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-level">[${data.level.toUpperCase()}]</span> <span class="log-src">${data.source}</span> ${data.message}`;
+        // Log messages contain contact names and message text chosen by
+        // senders, so build the entry with textContent, never innerHTML.
+        for (const [cls, text] of [
+            ['log-ts', ts],
+            ['log-level', `[${String(data.level).toUpperCase()}]`],
+            ['log-src', data.source || ''],
+        ]) {
+            const span = document.createElement('span');
+            span.className = cls;
+            span.textContent = text;
+            entry.append(span, ' ');
+        }
+        entry.append(data.message || '');
         entry.dataset.source = data.source || '';
 
         if (activeFilter !== 'all') {
