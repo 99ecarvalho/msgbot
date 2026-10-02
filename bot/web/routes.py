@@ -148,8 +148,7 @@ async def dashboard(request: Request):
 
     tg_ok = bool(settings.telegram_bot_token)
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "transcriber_health": t_health,
         "tts_health": tts_health,
         "evolution_health": evo_health,
@@ -170,8 +169,7 @@ async def qr_page(request: Request):
     except Exception as e:
         log.warning("qr_page_create_instance_failed", error=str(e))
     status = await evolution_svc.get_connection_status()
-    return templates.TemplateResponse("qr.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "qr.html", {
         "initial_status": status,
     })
 
@@ -238,8 +236,7 @@ async def messages_page(request: Request, platform: str = "", chat_id: str = "",
             elif et == "person_in_group" and msg.get("is_group") and e.get("group_id") == cid and e.get("phone") == sp and sp:
                 msg["wl_person_in_group"] = e
 
-    return templates.TemplateResponse("messages.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "messages.html", {
         "messages": msgs,
         "chats": chats,
         "filter_platform": platform,
@@ -255,8 +252,7 @@ async def chat_thread(request: Request, chat_rowid: int):
     chats = await db.get_all_chats()
     chat_info = next((c for c in chats if c["id"] == chat_rowid), None)
 
-    return templates.TemplateResponse("messages.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "messages.html", {
         "messages": msgs,
         "chats": chats,
         "chat_info": chat_info,
@@ -272,8 +268,7 @@ async def config_page(request: Request):
     cfg = await db.get_all_config()
     chats = await db.get_all_chats()
 
-    return templates.TemplateResponse("config.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "config.html", {
         "config": cfg,
         "chats": chats,
         "defaults": {
@@ -335,8 +330,7 @@ async def whitelist_page(request: Request):
         e["group_display_name"] = group_names.get(gid, gid) if gid else ""
         linked = await db.get_workflows_for_whitelist_entry(e["id"])
         e["workflow_ids"] = [w["id"] for w in linked]
-    return templates.TemplateResponse("whitelist.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "whitelist.html", {
         "whitelist": entries,
         "groups": groups,
         "workflows": all_workflows,
@@ -354,8 +348,7 @@ async def _enriched_whitelist(request: Request):
         e["group_display_name"] = group_names.get(gid, gid) if gid else ""
         linked = await db.get_workflows_for_whitelist_entry(e["id"])
         e["workflow_ids"] = [w["id"] for w in linked]
-    return templates.TemplateResponse("_whitelist_rows.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "_whitelist_rows.html", {
         "whitelist": entries,
         "workflows": all_workflows,
     })
@@ -477,15 +470,14 @@ async def update_whitelist_workflows(request: Request, entry_id: int):
 
 @router.get("/logs", response_class=HTMLResponse)
 async def logs_page(request: Request):
-    return templates.TemplateResponse("logs.html", {"request": request})
+    return templates.TemplateResponse(request, "logs.html")
 
 
 @router.get("/llm-logs", response_class=HTMLResponse)
 async def llm_logs_page(request: Request):
     logs = await db.get_llm_logs(limit=200)
     llm_stats = await db.get_llm_stats()
-    return templates.TemplateResponse("llm_logs.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "llm_logs.html", {
         "logs": logs,
         "llm_stats": llm_stats,
     })
@@ -515,8 +507,7 @@ async def clear_data(request: Request, target: str):
 async def stats_page(request: Request):
     stats = await db.get_stats()
     weekly = await db.get_weekly_history()
-    return templates.TemplateResponse("stats.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "stats.html", {
         "stats": stats,
         "weekly": weekly,
         "weekly_max": max((w["cnt"] for w in weekly), default=0),
@@ -532,8 +523,7 @@ async def tools_page(request: Request):
         transcriber_svc.health(),
         tts_svc.health(),
     )
-    return templates.TemplateResponse("tools.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "tools.html", {
         "transcriber_health": t_health,
         "tts_health": tts_health,
     })
@@ -735,8 +725,7 @@ async def workflows_page(request: Request):
         wf["step_count"] = len(steps)
         wf["linked_contacts"] = len(linked)
         workflows.append(wf)
-    return templates.TemplateResponse("workflows.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "workflows.html", {
         "workflows": workflows,
     })
 
@@ -788,8 +777,7 @@ async def workflow_detail(request: Request, workflow_id: int):
     linked_whitelist = await db.get_whitelist_entries_for_workflow(workflow_id)
     all_whitelist = await db.get_whitelist()
     wf_logs = await db.get_workflow_logs(workflow_id=workflow_id, limit=50)
-    return templates.TemplateResponse("workflow_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "workflow_detail.html", {
         "workflow": wf,
         "linked_whitelist": linked_whitelist,
         "all_whitelist": all_whitelist,
