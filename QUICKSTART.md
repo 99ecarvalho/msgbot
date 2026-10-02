@@ -6,7 +6,7 @@ Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
 - [1. Get the code](#1-get-the-code)
 - [2. Get your keys](#2-get-your-keys)
 - [3. Configure](#3-configure)
-- [4. Build and start](#4-build-and-start)
+- [4. Start](#4-start)
 - [5. Pair WhatsApp](#5-pair-whatsapp)
 - [6. Make the bot answer](#6-make-the-bot-answer)
 - [Deploying to a server (Telegram)](#deploying-to-a-server-telegram)
@@ -47,7 +47,7 @@ folders are empty; fetch them with:
 git submodule update --init
 ```
 
-`./build.sh` also does this when they are missing.
+`./run.sh` also does this when they are missing.
 
 ## 2. Get your keys
 
@@ -70,30 +70,21 @@ To use an Anthropic model deployed on the same Azure resource instead, set
 
 Keep the token secret: anyone who has it controls your bot.
 
-### Evolution API key
-
-This is a password you invent to protect your own Evolution API. Generate
-one:
-
-```bash
-openssl rand -hex 32
-```
-
 ## 3. Configure
 
-```bash
-cp .env.example .env
-```
+`./run.sh` creates `.env` from `.env.example` and generates the secrets you
+don't need to choose: `EVOLUTION_API_KEY`, which protects your Evolution API,
+and `WEB_PASSWORD`, the web UI login. You only add your Azure keys, and the
+Telegram token if you use Telegram:
 
-Edit `.env`:
+```bash
+cp .env.example .env     # or let ./run.sh create it
+```
 
 ```env
 AZURE_OPENAI_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
 AZURE_OPENAI_API_KEY=your-key
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4.1
-
-# Paste the output of `openssl rand -hex 32`
-EVOLUTION_API_KEY=3f1c...
 
 # Leave empty for WhatsApp only
 TELEGRAM_BOT_TOKEN=
@@ -106,18 +97,29 @@ Every variable is described in the README, under
 [Configuration](README.md#configuration). Never commit `.env`; it is ignored by
 git.
 
-## 4. Build and start
+## 4. Start
 
 ```bash
-./build.sh        # docker compose build
-./run.sh -d       # docker compose up -d
+./run.sh
 ```
+
+With no arguments, `run.sh` does everything: it fetches the submodules,
+prepares `.env`, builds the images, starts the stack, waits for the web UI,
+and prints its address with the username and password.
 
 The first build downloads the CUDA base image and the Piper voice, and the
 transcriber downloads its Whisper model (about 3 GB for the default
 `large-v3`) the first time it starts, so the first run can take a while.
-Follow the logs with `docker compose logs -f bot transcriber`, and stop
-everything with `docker compose down` (your data stays in Docker volumes).
+
+Other commands (`./run.sh help` lists them all):
+
+```bash
+./run.sh info              # print the address and login again
+./run.sh status            # containers and their state
+./run.sh logs bot          # follow the bot's logs
+./run.sh stop              # stop everything; ./run.sh start resumes
+./run.sh down              # remove the containers (data volumes are kept)
+```
 
 With less GPU memory, choose a smaller model in `.env`, for example
 `WHISPER_MODEL=small`. Without a GPU, set `WHISPER_DEVICE=cpu` and a small
@@ -127,7 +129,7 @@ model, and remove the `deploy:` block from the `transcriber` service in
 ## 5. Pair WhatsApp
 
 1. Open the address `./run.sh` printed, usually <http://localhost:8088>, and
-   log in as `admin` with the `WEB_PASSWORD` that `./run.sh` saved in `.env`.
+   log in with the username and password it printed.
    The dashboard shows whether each service is healthy.
 2. Go to **WhatsApp QR**.
 3. On your phone, open WhatsApp → **Settings** → **Linked devices** →
@@ -195,8 +197,7 @@ must have a public HTTPS address.
    ```bash
    ssh user@your-server
    cd msgbot
-   ./build.sh
-   ./run.sh -d
+   ./run.sh
    ```
 
    On startup the bot registers `BOT_URL/webhook/telegram` with Telegram.
@@ -212,24 +213,19 @@ Read [SECURITY.md](SECURITY.md) before exposing the bot to the internet.
 ## Updating
 
 ```bash
-git pull
-git submodule update --init --recursive   # check out the transcriber/TTS versions this commit uses
-./build.sh
-./run.sh -d
+./run.sh update
 ```
+
+This pulls the latest code, checks out the transcriber and TTS versions it
+uses, rebuilds, and restarts.
 
 To move the transcriber and TTS to their latest `main` instead, run
 `git submodule update --remote`, test, and commit the new submodule versions.
 
-If you installed MsgBot before the transcriber and TTS became submodules,
-the transcriber now uses a new `transcriber_cache` volume (the image no
-longer runs as root). Once it works, you can delete the old one with
-`docker volume rm msgbot_whisper_cache`.
-
 To rebuild only the bot after changing its code:
 
 ```bash
-docker compose build bot && docker compose up -d bot
+./run.sh build bot && ./run.sh start bot
 ```
 
 The database migrates itself on startup.
@@ -238,12 +234,13 @@ The database migrates itself on startup.
 
 | Symptom | What to check |
 | ------- | ------------- |
-| A service shows as unreachable on the dashboard | `docker compose ps` and `docker compose logs <service>` |
-| The QR code doesn't appear | `docker compose logs evolution-api`; try **Reconnect** on the QR page |
+| A service shows as unreachable on the dashboard | `./run.sh status` and `./run.sh logs <service>` |
+| The QR code doesn't appear | `./run.sh logs evolution-api`; try **Reconnect** on the QR page |
 | Messages appear on **Messages** but get no answer | The chat is whitelisted, the entry is enabled, and an enabled workflow is linked to it |
 | Telegram receives nothing | `BOT_URL` is public HTTPS and reachable; check `https://api.telegram.org/bot<token>/getWebhookInfo` |
 | Logs show `webhook_rejected` | The request didn't carry the webhook secret. Restart the bot so it registers the webhooks again; after changing `TELEGRAM_BOT_TOKEN` or `EVOLUTION_API_KEY`, a restart is required |
-| Forgot the web UI password | It is `WEB_PASSWORD` in `.env`; if that is empty, look for `web_password_generated` in `docker compose logs bot` |
-| Transcriber fails to start | The NVIDIA Container Toolkit is installed and the GPU check above works; `docker compose logs transcriber` |
+| Forgot the web UI password | `./run.sh info` prints it (it is `WEB_PASSWORD` in `.env`) |
+| Transcriber fails to start | The NVIDIA Container Toolkit is installed and the GPU check above works; `./run.sh logs transcriber` |
 | Build fails with a missing `external/...` path | Run `git submodule update --init` |
+| `./run.sh` warns about the NVIDIA runtime | Install the NVIDIA Container Toolkit, or run the transcriber on the CPU as described in [4. Start](#4-start) |
 | WhatsApp group or `@lid` contacts fail | See [doc/evolution/troubleshooting.md](doc/evolution/troubleshooting.md) |

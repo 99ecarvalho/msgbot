@@ -92,7 +92,7 @@ The transcriber and TTS services are separate projects,
 [ai-tts](https://github.com/99ecarvalho/ai-tts), included as git submodules
 in `external/` and built by `docker-compose.yml`.
 Clone with `--recurse-submodules`, or run `git submodule update --init`
-(`./build.sh` does this for you).
+(`./run.sh` does this for you).
 
 To use other services instead, change their `build.context` (or replace
 `build` with an `image`) in `docker-compose.yml`. They only need to provide:
@@ -108,16 +108,16 @@ To use other services instead, change their `build.context` (or replace
 ```bash
 git clone --recurse-submodules https://github.com/99ecarvalho/msgbot.git
 cd msgbot
-cp .env.example .env     # then fill in your keys
-./build.sh               # docker compose build
-./run.sh -d              # docker compose up -d
+cp .env.example .env     # then fill in your Azure keys
+./run.sh
 ```
 
-`./run.sh` prints the web UI's address. On the first run it also generates a
-login password and saves it in `.env` as `WEB_PASSWORD`. Open
-<http://localhost:8088>, log in as `admin`, go to **WhatsApp QR**, and scan
-the code with WhatsApp (*Linked devices → Link a device*). Then whitelist
-yourself and enable a workflow.
+`./run.sh` fetches the submodules, generates the secrets in `.env`, builds
+and starts the stack, and prints the web UI's address with the username and
+password. Open it, log in, go to **WhatsApp QR**, and scan the code with
+WhatsApp (*Linked devices → Link a device*). Then whitelist yourself and
+enable a workflow. `./run.sh help` lists the other commands (stop, logs,
+update, and more).
 
 [QUICKSTART.md](QUICKSTART.md) walks through each step, including creating a
 Telegram bot and deploying to a server.
@@ -143,7 +143,7 @@ All settings are environment variables, read from `.env`
 | `TTS_URL` | `http://tts:8000` | TTS address |
 | `BOT_URL` | `http://localhost:8000` | Where webhooks reach the bot: `http://bot:8000` for WhatsApp only, your public HTTPS URL for Telegram |
 | `WEB_USERNAME` | `admin` | Web UI login name |
-| `WEB_PASSWORD` | | Web UI password. `./run.sh` generates one on the first run; if it is empty, the bot logs a new random password at every start |
+| `WEB_PASSWORD` | | Web UI password. `./run.sh` generates one if it is empty; without one, the bot logs a new random password at every start |
 | `DEFAULT_SYSTEM_PROMPT` | `You are a helpful voice assistant. ...` | System prompt when a chat has none |
 | `RESPONSE_MODE` | `auto` | `text`, `voice`, or `auto` (voice reply to voice, text reply to text) |
 | `DATA_DIR` | `/app/data` | Where the SQLite database and audio files are stored |

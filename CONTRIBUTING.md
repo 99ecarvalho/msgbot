@@ -45,7 +45,7 @@ and include:
   a direct message or a group;
 - the workflow and its steps, if the problem is in a workflow;
 - what you expected to happen and what happened instead;
-- the relevant lines from `docker compose logs bot` (and `evolution-api`,
+- the relevant lines from `./run.sh logs bot` (and `evolution-api`,
   `transcriber`, or `tts` if they are involved).
 
 **Remove personal data before posting**: phone numbers, WhatsApp IDs
@@ -108,8 +108,8 @@ for the workflow engine. Before opening a pull request:
 1. Install the development requirements
    (`pip install -r requirements-dev.txt`) and run `python -m pytest`.
    Add a test for a bug fix or new behavior where you can.
-2. Rebuild and start the stack (`docker compose build bot && docker compose
-   up -d bot`) and check `docker compose logs bot` for errors.
+2. Rebuild and restart the bot (`./run.sh build bot && ./run.sh start bot`)
+   and check `./run.sh logs bot` for errors.
 3. Exercise what you changed from a real chat: a text message and a voice
    note, in a direct message and, if relevant, in a group. Check the
    **Logs**, **LLM Logs**, and the workflow's run history.
