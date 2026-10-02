@@ -9,6 +9,15 @@
 
 set -euo pipefail
 
+cd "$(dirname "$0")"
+
+# The transcriber and TTS services are git submodules in external/; fetch them
+# if this checkout was cloned without --recurse-submodules.
+if [[ ! -f external/ai-transcriber/Dockerfile || ! -f external/ai-tts/Dockerfile ]]; then
+    echo "=== Fetching submodules ==="
+    git submodule update --init --recursive
+fi
+
 echo "=== Building MsgBot stack ==="
 docker compose build "$@"
 echo "=== Build complete ==="

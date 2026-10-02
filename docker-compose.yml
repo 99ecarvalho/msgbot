@@ -55,13 +55,20 @@ services:
       - msgbot-net
     restart: unless-stopped
 
+  # Speech-to-text: https://github.com/99ecarvalho/ai-transcriber (git submodule)
   transcriber:
     build:
-      context: ../company-manager/framework/transcriber
+      context: ./external/ai-transcriber
     ports:
       - "8001:8000"
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cuda}
+      - WHISPER_PRELOAD=${WHISPER_PRELOAD:-1}
     volumes:
-      - whisper_cache:/cache
+      # The image runs as an unprivileged user; a fresh volume inherits its
+      # ownership of /cache.
+      - transcriber_cache:/cache
     networks:
       - msgbot-net
     restart: unless-stopped
@@ -73,9 +80,10 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Text-to-speech: https://github.com/99ecarvalho/ai-tts (git submodule)
   tts:
     build:
-      context: ../company-manager/framework/tts
+      context: ./external/ai-tts
     ports:
       - "8002:8000"
     networks:
@@ -107,7 +115,7 @@ services:
 volumes:
   postgres_data:
   evolution_data:
-  whisper_cache:
+  transcriber_cache:
   bot_data:
 
 networks:

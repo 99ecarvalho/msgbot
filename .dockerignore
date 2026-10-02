@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
+# The bot image only needs requirements.txt and bot/.
+.git
+.venv
+external
+data
+**/__pycache__
+*.md
+.env
+.env.*
