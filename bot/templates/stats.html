@@ -153,4 +153,25 @@
     <p class="secondary">No chats yet.</p>
     {% endif %}
 </article>
+
+<!-- Weekly history: every ISO week, newest first, scaled to the busiest week -->
+<div class="section-title">Weekly History</div>
+<article>
+    {% if weekly %}
+    <p class="secondary" style="font-size:0.8rem;">Messages per week (ISO year-week, UTC), newest first. The busiest week is 100%.</p>
+    <div class="daily-chart">
+        {% for w in weekly %}
+        <div class="daily-row" title="Week of {{ w.start }}: {{ w.cnt }} messages">
+            <span class="daily-date">{{ w.week }}</span>
+            <div class="daily-bar-container">
+                <div class="daily-bar" style="width: {{ (w.cnt / weekly_max * 100) if weekly_max else 0 }}%"></div>
+            </div>
+            <span class="daily-count">{{ w.cnt }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="secondary">No message data yet.</p>
+    {% endif %}
+</article>
 {% endblock %}

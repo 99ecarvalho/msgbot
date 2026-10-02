@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import date, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -442,6 +443,33 @@ async def get_stats() -> dict:
     )
     r["daily"] = [dict(row) for row in rows]
     return r
+
+
+async def get_weekly_history() -> list[dict]:
+    """Messages per ISO week (e.g. 2026-W40) over the whole history, newest first.
+
+    Weeks without messages between the first and the latest one are included
+    with a count of 0, so gaps show. Days are UTC, like the daily chart.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT date(created_at, 'unixepoch') as day, COUNT(*) as cnt FROM messages GROUP BY day"
+    )
+    if not rows:
+        return []
+    counts: dict[date, int] = {}
+    for row in rows:
+        d = date.fromisoformat(row["day"])
+        monday = d - timedelta(days=d.weekday())
+        counts[monday] = counts.get(monday, 0) + row["cnt"]
+
+    weeks = []
+    monday, last = max(counts), min(counts)
+    while monday >= last:
+        year, week, _ = monday.isocalendar()
+        weeks.append({"week": f"{year}-W{week:02d}", "start": monday.isoformat(), "cnt": counts.get(monday, 0)})
+        monday -= timedelta(days=7)
+    return weeks
 
 
 # ---- Config helpers ----

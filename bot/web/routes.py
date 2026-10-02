@@ -514,9 +514,12 @@ async def clear_data(request: Request, target: str):
 @router.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request):
     stats = await db.get_stats()
+    weekly = await db.get_weekly_history()
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "stats": stats,
+        "weekly": weekly,
+        "weekly_max": max((w["cnt"] for w in weekly), default=0),
     })
 
 
