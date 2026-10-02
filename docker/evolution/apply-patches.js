@@ -28,10 +28,12 @@ const fs = require('fs');
 const path = require('path');
 
 let patchCount = 0;
+let failures = 0;
 
 function patchFile(filePath, replacements) {
   if (!fs.existsSync(filePath)) {
-    console.error(`SKIP: ${filePath} not found`);
+    console.error(`ERROR: ${filePath} not found`);
+    failures++;
     return;
   }
 
@@ -46,6 +48,7 @@ function patchFile(filePath, replacements) {
     if (!content.includes(search)) {
       console.error(`  NOT FOUND: ${desc}`);
       console.error(`    Search string: ${JSON.stringify(search).slice(0, 120)}`);
+      failures++;
       continue;
     }
     content = content.replace(search, replace);
@@ -107,3 +110,10 @@ patchFile('/evolution/node_modules/baileys/lib/Socket/messages-send.js', [
 
 // ---------------------------------------------------------------------------
 console.log(`\nDone — ${patchCount} patch(es) applied.\n`);
+
+// A patch that no longer matches means Evolution API or Baileys changed: fail
+// the image build instead of shipping an unpatched image.
+if (failures > 0) {
+  console.error(`${failures} patch(es) could not be applied.`);
+  process.exit(1);
+}
