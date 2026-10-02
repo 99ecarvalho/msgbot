@@ -55,6 +55,39 @@ structlog.configure(
 )
 
 
+async def _setup_telegram():
+    tg_app = get_telegram_app()
+    await tg_app.initialize()
+    webhook_url = f"{settings.bot_url}/webhook/telegram"
+    await tg_app.bot.set_webhook(webhook_url, secret_token=auth.telegram_webhook_secret())
+    log.info("telegram.webhook_set", url=webhook_url)
+
+
+async def _setup_evolution():
+    await evolution.create_instance()
+    webhook_url = f"{settings.bot_url}/webhook/whatsapp"
+    await evolution.set_webhook(webhook_url=webhook_url)
+    log.info("evolution.webhook_set", url=webhook_url)
+
+
+async def _retry_setup(name: str, setup, delay: float = 5.0, max_delay: float = 60.0):
+    """Run setup() until it succeeds, waiting longer after each failure."""
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            await setup()
+            if attempt > 1:
+                log.info(f"{name}.setup_succeeded", attempt=attempt)
+            return
+        except Exception as e:
+            log.warning(f"{name}.setup_failed", error=str(e), attempt=attempt, retry_in=delay)
+            if attempt == 1:
+                await db.save_log("warning", f"{name} setup failed ({e}); retrying in the background", source="main")
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, max_delay)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
@@ -75,26 +108,14 @@ async def lifespan(app: FastAPI):
     if not await db.get_config("azure_deployment"):
         await db.set_config("azure_deployment", settings.azure_openai_deployment_name)
 
-    # Setup Telegram webhook
+    # Register the webhooks (with their secrets) in the background, retrying
+    # until it works: Evolution API is often still starting when the bot is,
+    # and until its webhook carries the secret every event would be rejected.
+    setup_tasks = []
     if settings.telegram_bot_token:
-        try:
-            tg_app = get_telegram_app()
-            await tg_app.initialize()
-            webhook_url = f"{settings.bot_url}/webhook/telegram"
-            await tg_app.bot.set_webhook(webhook_url, secret_token=auth.telegram_webhook_secret())
-            log.info("telegram.webhook_set", url=webhook_url)
-        except Exception as e:
-            log.error("telegram.setup_failed", error=str(e))
-
-    # Setup Evolution API instance + webhook
+        setup_tasks.append(asyncio.create_task(_retry_setup("telegram", _setup_telegram)))
     if settings.evolution_api_key:
-        try:
-            await evolution.create_instance()
-            webhook_url = f"{settings.bot_url}/webhook/whatsapp"
-            await evolution.set_webhook(webhook_url=webhook_url)
-            log.info("evolution.webhook_set", url=webhook_url)
-        except Exception as e:
-            log.error("evolution.setup_failed", error=str(e))
+        setup_tasks.append(asyncio.create_task(_retry_setup("evolution", _setup_evolution)))
 
     auth.web_password()  # logs the generated password when WEB_PASSWORD is unset
     await db.save_log("info", "Bot started", source="main")
@@ -103,6 +124,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    for task in setup_tasks:
+        task.cancel()
     if settings.telegram_bot_token:
         try:
             tg_app = get_telegram_app()
