@@ -2,16 +2,31 @@
 
 [![License: LGPL v3+](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue.svg)](COPYING.LESSER)
 
-A self-hosted voice bot for WhatsApp and Telegram. Send it a voice note, or
-forward it any audio, and it transcribes the audio (Whisper), processes the
-text with an LLM (Azure OpenAI, or Anthropic models hosted on Azure), and
-replies with text, a spoken voice note (Piper TTS), or both. What happens to
-each message is defined by **workflows** you build in the web UI, and only
-the contacts and groups you allow get a response.
+A self-hosted **web UI that connects to your WhatsApp and Telegram**, and
+automates what happens to each message:
+
+- 💬 **See your messages**: every chat, group, and voice note in one place,
+  with audio playback, filters by platform and chat, and replies from the
+  browser.
+- 🎧 **Speech to text**: voice notes and forwarded audio are transcribed
+  with Whisper, running on your own GPU.
+- 🔊 **Text to speech**: replies can be sent back as spoken voice notes,
+  generated locally with Piper.
+- 🧩 **Workflow pipelines**: chain steps such as *transcribe → ask an AI →
+  reply with text → reply with voice*, with conditions, and choose which
+  contacts and groups each workflow runs for.
+- 🤖 **AI API calls**: send text to an LLM (Azure OpenAI, or Anthropic
+  models hosted on Azure) with your own prompts, and log every call with
+  its tokens and latency.
+
+Everything runs with Docker on your machine or server, and your messages and
+audio stay in your own database. Only the contacts and groups you allow ever
+get an automated response.
 
 Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
 
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Getting started](#getting-started)
@@ -47,6 +62,21 @@ Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
   transcription and TTS by hand.
 - **Everything stored locally**: messages, audio, and logs live in SQLite
   and on a Docker volume.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Dashboard: service health and activity](docs/screenshots/dashboard.png) | ![Messages from every chat, with transcriptions and replies](docs/screenshots/messages.png) |
+| **Dashboard**: service health, activity, and the busiest chats | **Messages**: every chat in one list, with transcriptions, whitelist controls, and replies |
+| ![A workflow's pipeline steps](docs/screenshots/workflow_detail.png) | ![Workflows list and step reference](docs/screenshots/workflows.png) |
+| **Workflow editor**: a pipeline of steps, the contacts it runs for, and its run history | **Workflows**: enable pipelines and see the available steps and conditions |
+| ![Speech-to-text and text-to-speech tools](docs/screenshots/tools.png) | ![LLM call logs with tokens and latency](docs/screenshots/llm-logs.png) |
+| **Tools**: live dictation, file transcription, and text to speech | **LLM Logs**: every AI call with its prompt, reply, tokens, and latency |
+| ![Statistics with weekly history](docs/screenshots/stats.png) | ![Whitelist entries linked to workflows](docs/screenshots/whitelist.png) |
+| **Statistics**: totals, top chats, and the weekly history | **Whitelist**: who the bot answers, and with which workflows |
+
+The screenshots use placeholder names, numbers, and messages.
 
 ## Architecture
 
@@ -203,7 +233,7 @@ quick buttons on the **Messages** page.
 | WhatsApp QR | `/qr` | Pair, reconnect, or disconnect WhatsApp |
 | Messages | `/messages` | History per chat with audio playback, manual replies, and transcription |
 | Whitelist | `/whitelist` | Access control entries and their workflows |
-| Stats | `/stats` | Usage statistics per chat |
+| Stats | `/stats` | Totals, top chats, daily activity, and the message history per ISO week |
 | Workflows | `/workflows` | Create, edit, and enable workflows |
 | Tools | `/tools` | Try transcription and TTS by hand |
 | Config | `/config` | Default prompt, response mode, per-chat overrides, database maintenance |
