@@ -104,7 +104,7 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 {% endif %}
             </td>
-            <td>
+            <td class="msg-content">
                 {% if msg.transcription %}
                     <p><strong>Transcription:</strong> {{ msg.transcription }}</p>
                     {% if msg.llm_response %}
@@ -362,9 +362,8 @@ async function transcribeAudio(btn) {
             btn.disabled = false;
             return;
         }
-        // Find the content cell (sibling before audio cell)
         const row = btn.closest('tr');
-        const contentCell = row.querySelector('td:nth-last-child(3)');
+        const contentCell = row.querySelector('td.msg-content');
         if (contentCell && data.text) {
             const p = document.createElement('p');
             const label = document.createElement('strong');
