@@ -7,17 +7,14 @@ flows through it, and where its strengths and gaps are. For setup and usage,
 see [README.md](README.md) and [QUICKSTART.md](QUICKSTART.md).
 
 - [1. Overview](#1-overview)
-- [2. Project statistics](#2-project-statistics)
-- [3. Architecture](#3-architecture)
-- [4. Directory structure](#4-directory-structure)
-- [5. Modules](#5-modules)
-- [6. Message flow](#6-message-flow)
-- [7. Dependencies](#7-dependencies)
-- [8. Security](#8-security)
-- [9. Database](#9-database)
-- [10. Docker infrastructure](#10-docker-infrastructure)
-- [11. Code distribution](#11-code-distribution)
-- [12. Quality summary](#12-quality-summary)
+- [2. Architecture](#2-architecture)
+- [3. Directory structure](#3-directory-structure)
+- [4. Modules](#4-modules)
+- [5. Message flow](#5-message-flow)
+- [6. Dependencies](#6-dependencies)
+- [7. Security](#7-security)
+- [8. Database](#8-database)
+- [9. Docker infrastructure](#9-docker-infrastructure)
 
 ---
 
@@ -30,31 +27,12 @@ hosted on Azure), and replies with text or voice (Piper TTS). It includes a
 complete web UI with a dashboard, message history, configurable workflows,
 and a whitelist.
 
----
-
-## 2. Project statistics
-
-Line counts include the license header at the top of each file.
-
-| Metric | Value |
-| --- | --- |
-| **Main language** | Python 3.11 |
-| **Web framework** | FastAPI + Uvicorn |
-| **Python modules** | 13 (+ 4 `__init__.py`) |
-| **Python lines** | **3,657** |
-| **HTML templates (Jinja2)** | 13 files / **2,357 lines** |
-| **Custom CSS** | 901 lines |
-| **JavaScript** | 22 lines in `app.js`, inline scripts in templates (+ vendored htmx / Pico CSS) |
-| **Evolution API patch script** | 104 lines (Node.js) |
-| **Total** | ~7,000 lines |
-| **Python dependencies** | 12 packages |
-| **Docker containers** | 5 (bot, evolution-api, transcriber, tts, postgres) |
-| **Automated tests** | None |
-| **License** | LGPL-3.0-or-later |
+It is written in Python 3.11, licensed under LGPL-3.0-or-later, and has no
+automated tests yet.
 
 ---
 
-## 3. Architecture
+## 2. Architecture
 
 ```text
                webhook                    webhook
@@ -81,45 +59,48 @@ Evolution API ──────────► FastAPI Bot ◄─────�
 | TTS | `8002` | `8000` | Piper TTS, PT-BR voice by default (submodule) |
 | PostgreSQL | — | `5432` | Evolution API database (internal only) |
 
-The transcriber and TTS services are separate projects, [ai-transcriber](https://github.com/99ecarvalho/ai-transcriber) and
-[ai-tts](https://github.com/99ecarvalho/ai-tts), included as git submodules in `external/`; see
-[Requirements](README.md#requirements) for the HTTP contract the bot uses.
+The transcriber and TTS services are separate projects,
+[ai-transcriber](https://github.com/99ecarvalho/ai-transcriber) and
+[ai-tts](https://github.com/99ecarvalho/ai-tts), included as git submodules
+in `external/`; see [Requirements](README.md#requirements) for the HTTP
+contract the bot uses.
 
 ---
 
-## 4. Directory structure
+## 3. Directory structure
 
 ```text
 bot/
-├── main.py           (153 LOC)  FastAPI app, lifecycle, webhook endpoints
-├── config.py          (59 LOC)  Settings from env vars (pydantic-settings)
-├── db.py             (904 LOC)  SQLite data layer (aiosqlite)
-├── engine.py         (480 LOC)  Workflow engine: the step pipeline
-├── utils.py           (75 LOC)  Audio utilities (save, ffmpeg conversion)
+├── main.py            FastAPI app, lifecycle, webhook endpoints
+├── config.py          Settings from env vars (pydantic-settings)
+├── db.py              SQLite data layer (aiosqlite)
+├── engine.py          Workflow engine: the step pipeline
+├── utils.py           Audio utilities (save, ffmpeg conversion)
 ├── handlers/
-│   ├── telegram.py   (205 LOC)  Telegram handler (commands + messages)
-│   └── whatsapp.py   (280 LOC)  WhatsApp handler (Evolution API webhooks)
+│   ├── telegram.py    Telegram handler (commands + messages)
+│   └── whatsapp.py    WhatsApp handler (Evolution API webhooks)
 ├── services/
-│   ├── evolution.py  (193 LOC)  Evolution API HTTP client
-│   ├── llm.py        (163 LOC)  LLM client (Azure OpenAI / Anthropic)
-│   ├── transcriber.py (55 LOC)  Whisper HTTP client
-│   └── tts.py         (44 LOC)  Piper TTS HTTP client
+│   ├── evolution.py   Evolution API HTTP client
+│   ├── llm.py         LLM client (Azure OpenAI / Anthropic)
+│   ├── transcriber.py Whisper HTTP client
+│   └── tts.py         Piper TTS HTTP client
 ├── web/
-│   ├── routes.py     (889 LOC)  Web UI routes (dashboard, config, etc.)
-│   └── ws.py         (129 LOC)  WebSockets for live logs and QR code
-├── templates/       (2,357 LOC) 13 Jinja2 templates
-└── static/                      CSS, JS, htmx, Pico CSS
-docker/evolution/                Evolution API image + LID patches
-doc/evolution/                   Evolution API reference notes
-external/ai-transcriber/         Transcriber service (git submodule)
-external/ai-tts/                 TTS service (git submodule)
+│   ├── routes.py      Web UI routes (dashboard, config, etc.)
+│   └── ws.py          WebSockets for live logs and QR code
+├── templates/         Jinja2 templates
+└── static/            CSS, JS, htmx, Pico CSS
+docker/evolution/      Evolution API image + LID patches
+doc/evolution/         Evolution API reference notes
+external/
+├── ai-transcriber/    Transcriber service (git submodule)
+└── ai-tts/            TTS service (git submodule)
 ```
 
 ---
 
-## 5. Modules
+## 4. Modules
 
-### 5.1 `main.py` — Application entry point
+### 4.1 `main.py` — Application entry point
 
 - **Lifecycle (lifespan):** initializes the database, creates the Evolution
   API instance, and registers the Telegram and WhatsApp webhooks.
@@ -131,7 +112,7 @@ external/ai-tts/                 TTS service (git submodule)
   garbage-collected, and their exceptions are logged. Telegram updates are
   processed inline.
 
-### 5.2 `config.py` — Configuration
+### 4.2 `config.py` — Configuration
 
 - Uses `pydantic-settings` `BaseSettings` to load environment variables.
 - Reads a `.env` file.
@@ -141,11 +122,11 @@ external/ai-tts/                 TTS service (git submodule)
   key/URL/instance, transcriber/TTS URLs, bot URL, default system prompt,
   response mode, and data directory.
 
-### 5.3 `db.py` — Data layer (904 LOC, the largest file)
+### 4.3 `db.py` — Data layer
 
 **Database:** SQLite through `aiosqlite`, with WAL mode and foreign keys.
 
-**Tables (10):**
+**Tables:**
 
 | Table | Purpose |
 | --- | --- |
@@ -169,7 +150,7 @@ external/ai-tts/                 TTS service (git submodule)
 - Statistics (messages, chats, audio, LLM tokens).
 - Whitelist matching by person, group, and person-in-group.
 
-### 5.4 `engine.py` — Workflow engine (480 LOC, the core of the bot)
+### 4.4 `engine.py` — Workflow engine (the core of the bot)
 
 **Concept:** each message goes through a pipeline of configurable steps.
 
@@ -202,7 +183,7 @@ external/ai-tts/                 TTS service (git submodule)
   WhatsApp replies use the full JID, so `@lid` contacts and groups work.
 - `WorkflowContext` (dataclass): the state carried through the pipeline.
 
-### 5.5 `handlers/whatsapp.py` — WhatsApp (280 LOC)
+### 4.5 `handlers/whatsapp.py` — WhatsApp
 
 - Receives Evolution API webhooks (`messages.upsert`, `connection.update`).
 - Skips the bot's own messages (`fromMe`), protocol and reaction messages,
@@ -217,7 +198,7 @@ external/ai-tts/                 TTS service (git submodule)
 - Checks the whitelist; blocked messages are saved with `blocked=True`.
 - Hands whitelisted messages to the engine (`process_message`).
 
-### 5.6 `handlers/telegram.py` — Telegram (205 LOC)
+### 4.6 `handlers/telegram.py` — Telegram
 
 - Uses `python-telegram-bot` in webhook mode.
 - Commands: `/start`, `/help`, `/mode`, `/prompt`.
@@ -226,14 +207,14 @@ external/ai-tts/                 TTS service (git submodule)
 - Auto-transcribes audio.
 - Hands messages to the engine.
 
-### 5.7 `services/` — External service clients
+### 4.7 `services/` — External service clients
 
-| Service | File | Client | Timeout |
-| --- | --- | --- | --- |
-| Evolution API | `evolution.py` | `httpx.AsyncClient` | 10–60 s |
-| LLM | `llm.py` | `AsyncAzureOpenAI` / `AsyncAnthropic` | SDK default |
-| Transcriber | `transcriber.py` | `httpx.AsyncClient` | 120 s |
-| TTS | `tts.py` | `httpx.AsyncClient` | 60 s |
+| Service | File | Client |
+| --- | --- | --- |
+| Evolution API | `evolution.py` | `httpx.AsyncClient` |
+| LLM | `llm.py` | `AsyncAzureOpenAI` / `AsyncAnthropic` |
+| Transcriber | `transcriber.py` | `httpx.AsyncClient` |
+| TTS | `tts.py` | `httpx.AsyncClient` |
 
 **LLM (`llm.py`):**
 
@@ -253,9 +234,9 @@ external/ai-tts/                 TTS service (git submodule)
 - Media download and group metadata.
 - Health check.
 
-### 5.8 `web/` — Web interface
+### 4.8 `web/` — Web interface
 
-**Routes (`routes.py`, 889 LOC):**
+**Routes (`routes.py`):**
 
 | Route | Purpose |
 | --- | --- |
@@ -290,7 +271,7 @@ external/ai-tts/                 TTS service (git submodule)
 
 ---
 
-## 6. Message flow
+## 5. Message flow
 
 ```text
 1. Webhook received (Telegram / WhatsApp)
@@ -320,30 +301,20 @@ external/ai-tts/                 TTS service (git submodule)
 
 ---
 
-## 7. Dependencies
+## 6. Dependencies
 
-```text
-fastapi==0.115.5           # Web framework
-uvicorn[standard]==0.32.0  # ASGI server
-httpx==0.28.1              # Async HTTP client
-openai==1.82.0             # Azure OpenAI SDK
-anthropic==0.102.0         # Anthropic SDK (Azure-hosted models)
-python-telegram-bot==21.10 # Telegram Bot API
-python-multipart==0.0.17   # File uploads
-aiosqlite==0.20.0          # Async SQLite
-jinja2==3.1.4              # Templates
-structlog==24.4.0          # Structured logging
-pydantic-settings==2.7.1   # Configuration
-websockets==14.1           # WebSocket support
-```
+**Python packages:** pinned in [requirements.txt](requirements.txt).
 
 **System dependency:** `ffmpeg` (WAV → OGG Opus conversion).
 
-**Vendored frontend:** htmx 2.0.4 (0BSD), Pico CSS 2.1.1 (MIT).
+**Vendored frontend:** htmx (0BSD) and Pico CSS (MIT), in `bot/static/`.
+
+**Services:** Evolution API, the transcriber, and TTS run in their own
+containers; see [Docker infrastructure](#9-docker-infrastructure).
 
 ---
 
-## 8. Security
+## 7. Security
 
 See [SECURITY.md](SECURITY.md) for the deployment guide and how to report a
 vulnerability.
@@ -380,11 +351,11 @@ vulnerability.
 
 ---
 
-## 9. Database
+## 8. Database
 
 **Engine:** SQLite in WAL (write-ahead logging) mode, for concurrent reads.
 
-**Schema:** 10 tables, with indexes on `messages(chat_rowid)`,
+**Schema:** the tables above, with indexes on `messages(chat_rowid)`,
 `messages(created_at)`, `logs(created_at)`, `workflow_logs(run_id)`,
 `workflow_logs(message_id)`, and `llm_logs(created_at)`.
 
@@ -398,7 +369,7 @@ Audio Summary Bot's prompt and labels are in Brazilian Portuguese.
 
 ---
 
-## 10. Docker infrastructure
+## 9. Docker infrastructure
 
 ```text
 docker-compose.yml — 5 services
@@ -418,41 +389,3 @@ docker-compose.yml — 5 services
 Baileys 6.7.12's handling of WhatsApp LIDs (Linked Identities) at image
 build time, so direct messages to `@lid` contacts and group messages work.
 
----
-
-## 11. Code distribution
-
-```text
-db.py             █████████████████████████ 904  (25%)
-web/routes.py     ████████████████████████  889  (24%)
-engine.py         █████████████             480  (13%)
-handlers/wa.py    ████████                  280   (8%)
-handlers/tg.py    ██████                    205   (6%)
-services/evo.py   █████                     193   (5%)
-services/llm.py   ████                      163   (4%)
-main.py           ████                      153   (4%)
-web/ws.py         ███                       129   (4%)
-utils.py          ██                         75   (2%)
-config.py         ██                         59   (2%)
-services/trans.py █                          55   (2%)
-services/tts.py   █                          44   (1%)
-__init__.py (4)   █                          28   (1%)
-                                     Total: 3,657
-```
-
----
-
-## 12. Quality summary
-
-| Aspect | Rating |
-| --- | --- |
-| **Organization** | ⭐⭐⭐⭐⭐ Clean, modular structure with a clear separation of concerns |
-| **Readability** | ⭐⭐⭐⭐ Clear code with good structured logging |
-| **Abstraction** | ⭐⭐⭐⭐ Good use of Protocol, dataclasses, and a strategy pattern in the engine |
-| **Logging** | ⭐⭐⭐⭐⭐ Excellent: structlog JSON, logs in the database, WebSocket streaming |
-| **Error handling** | ⭐⭐⭐⭐ Steps keep running when one fails; errors are logged |
-| **Security** | ⭐⭐⭐ Solid whitelist and output escaping, but no web UI authentication and unverified webhooks |
-| **Tests** | ⭐ No automated tests |
-| **Documentation** | ⭐⭐⭐⭐⭐ README, quick start, contributing guide, security policy, Evolution API notes, and module docstrings |
-| **Scalability** | ⭐⭐⭐ SQLite limits concurrency; fine for personal or small-team use |
-| **Frontend** | ⭐⭐⭐⭐ htmx + Pico CSS: light, functional, no build step |
