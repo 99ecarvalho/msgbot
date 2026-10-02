@@ -24,3 +24,6 @@ upstream/
 *~
 .DS_Store
 Thumbs.db
+
+# Unredacted screenshots (may show real chats); only redacted copies are committed
+docs/screenshots/raw/
