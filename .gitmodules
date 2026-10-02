@@ -6,3 +6,13 @@
 	path = external/ai-tts
 	url = https://github.com/99ecarvalho/ai-tts.git
 	branch = main
+[submodule "external/baileys"]
+	path = external/baileys
+	url = https://github.com/99ecarvalho/Baileys.git
+	branch = fix/lid-jid-encoding
+	update = none
+[submodule "external/evolution-api"]
+	path = external/evolution-api
+	url = https://github.com/99ecarvalho/evolution-api.git
+	branch = fix/lid-validation-bypass
+	update = none
