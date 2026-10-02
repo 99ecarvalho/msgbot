@@ -102,8 +102,8 @@ async def set_webhook(name: str | None = None, webhook_url: str = "") -> dict:
             "url": webhook_url,
             "headers": _webhook_headers(),
             "enabled": True,
-            "webhookByEvents": False,
-            "webhookBase64": True,
+            "byEvents": False,
+            "base64": True,
             "events": [
                 "MESSAGES_UPSERT",
                 "CONNECTION_UPDATE",
