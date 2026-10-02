@@ -1,0 +1,35 @@
+{#
+    Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
+
+    This file is part of MsgBot. It is free software, licensed under the GNU
+    Lesser General Public License v3.0 or later. See COPYING.LESSER and
+    COPYING for details.
+
+    SPDX-License-Identifier: LGPL-3.0-or-later
+#}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log in — MsgBot</title>
+    <link rel="stylesheet" href="/static/pico.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main class="container" style="max-width: 24rem; margin-top: 15vh;">
+        <article>
+            <header><h3 style="margin:0;">MsgBot</h3></header>
+            <form method="post" action="/login">
+                <input type="hidden" name="next" value="{{ next }}">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+                {% if error %}<p class="text-error">{{ error }}</p>{% endif %}
+                <button type="submit">Log in</button>
+            </form>
+        </article>
+    </main>
+</body>
+</html>

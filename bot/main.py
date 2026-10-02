@@ -16,6 +16,7 @@ from pathlib import Path
 import structlog
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from bot.config import settings
@@ -23,6 +24,7 @@ from bot import db
 from bot.handlers.telegram import get_app as get_telegram_app
 from bot.handlers.whatsapp import handle_webhook as handle_wa_webhook
 from bot.services import evolution
+from bot.web import auth
 from bot.web.routes import router as web_router
 
 log = structlog.get_logger("main")
@@ -79,7 +81,7 @@ async def lifespan(app: FastAPI):
             tg_app = get_telegram_app()
             await tg_app.initialize()
             webhook_url = f"{settings.bot_url}/webhook/telegram"
-            await tg_app.bot.set_webhook(webhook_url)
+            await tg_app.bot.set_webhook(webhook_url, secret_token=auth.telegram_webhook_secret())
             log.info("telegram.webhook_set", url=webhook_url)
         except Exception as e:
             log.error("telegram.setup_failed", error=str(e))
@@ -94,6 +96,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             log.error("evolution.setup_failed", error=str(e))
 
+    auth.web_password()  # logs the generated password when WEB_PASSWORD is unset
     await db.save_log("info", "Bot started", source="main")
     log.info("bot.ready")
 
@@ -117,6 +120,10 @@ static_dir = Path(__file__).parent / "static"
 static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+# Web UI login; webhooks and static files stay public
+app.add_middleware(auth.AuthMiddleware)
+app.include_router(auth.router)
+
 # Mount web UI routes
 app.include_router(web_router)
 
@@ -126,6 +133,10 @@ app.include_router(web_router)
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
     """Receive Telegram updates."""
+    if not settings.telegram_bot_token or not auth.check_secret(
+            request.headers.get(auth.TELEGRAM_SECRET_HEADER), auth.telegram_webhook_secret()):
+        log.warning("telegram.webhook_rejected", client=request.client.host if request.client else "")
+        return JSONResponse({"ok": False}, status_code=403)
     data = await request.json()
     tg_app = get_telegram_app()
     from telegram import Update
@@ -137,6 +148,10 @@ async def telegram_webhook(request: Request):
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request):
     """Receive Evolution API webhook events."""
+    if not settings.evolution_api_key or not auth.check_secret(
+            request.headers.get(auth.WHATSAPP_WEBHOOK_HEADER), auth.whatsapp_webhook_secret()):
+        log.warning("whatsapp.webhook_rejected", client=request.client.host if request.client else "")
+        return JSONResponse({"ok": False}, status_code=403)
     data = await request.json()
     task = asyncio.create_task(handle_wa_webhook(data))
     _background_tasks.add(task)

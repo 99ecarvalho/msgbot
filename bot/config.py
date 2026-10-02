@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     default_system_prompt: str = "You are a helpful voice assistant. Respond concisely and naturally."
     response_mode: str = "auto"  # text | voice | auto
 
+    # --- Web UI login ---
+    web_username: str = "admin"
+    web_password: str = ""  # empty: a random password is generated and logged at startup
+
     # --- Data ---
     data_dir: Path = Path("/app/data")
 

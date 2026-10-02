@@ -23,6 +23,12 @@ def _headers() -> dict:
     return {"apikey": settings.evolution_api_key, "Content-Type": "application/json"}
 
 
+def _webhook_headers() -> dict:
+    """Headers Evolution API adds to every webhook, so the bot can verify them."""
+    from bot.web.auth import WHATSAPP_WEBHOOK_HEADER, whatsapp_webhook_secret
+    return {WHATSAPP_WEBHOOK_HEADER: whatsapp_webhook_secret()}
+
+
 def _base() -> str:
     return settings.evolution_api_url.rstrip("/")
 
@@ -38,6 +44,7 @@ async def create_instance(name: str | None = None) -> dict:
         "qrcode": True,
         "webhook": {
             "url": webhook_url,
+            "headers": _webhook_headers(),
             "byEvents": False,
             "base64": True,
             "events": [
@@ -93,6 +100,7 @@ async def set_webhook(name: str | None = None, webhook_url: str = "") -> dict:
     payload = {
         "webhook": {
             "url": webhook_url,
+            "headers": _webhook_headers(),
             "enabled": True,
             "webhookByEvents": False,
             "webhookBase64": True,
