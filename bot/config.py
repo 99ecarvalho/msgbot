@@ -53,7 +53,9 @@ class Settings(BaseSettings):
     def audios_dir(self) -> Path:
         return self.data_dir / "audios"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # .env is shared with docker compose, which reads settings for the other
+    # services (e.g. WHISPER_MODEL) from it; ignore keys that aren't ours.
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
