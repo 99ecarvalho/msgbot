@@ -72,8 +72,8 @@ Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
 | **bot** | `8088` | `8000` | This project: web UI and webhooks |
 | **evolution-api** | `8085` | `8080` | WhatsApp bridge, Evolution API v2.2.3 with the patches in `docker/evolution/` |
 | **postgres** | (none) | `5432` | Database for Evolution API (internal only) |
-| **transcriber** | `8001` | `8000` | Speech-to-text service (external, see below) |
-| **tts** | `8002` | `8000` | Text-to-speech service (external, see below) |
+| **transcriber** | `8001` | `8000` | [ai-transcriber](https://github.com/99ecarvalho/ai-transcriber): faster-whisper speech-to-text on the GPU (git submodule) |
+| **tts** | `8002` | `8000` | [ai-tts](https://github.com/99ecarvalho/ai-tts): Piper text-to-speech, Brazilian Portuguese voice by default (git submodule) |
 
 ## Requirements
 
@@ -86,26 +86,27 @@ Copyright (c) 2026 Eduardo Correia <ecorreia@apliant.com.br>
 - **For Telegram**: a server reachable from the internet over HTTPS,
   because Telegram delivers messages by webhook. WhatsApp alone works on
   localhost.
-- **A transcriber and a TTS service.** These are not part of this
-  repository: `docker-compose.yml` builds them from
-  `../company-manager/framework/transcriber` and
-  `../company-manager/framework/tts`. Point those `build.context` entries at
-  your own services, which only need to provide:
 
-  | Service | Endpoint | Request | Response |
-  | ------- | -------- | ------- | -------- |
-  | Transcriber | `POST /transcribe` | multipart `file`, plus optional `language`, `vad_filter`, `beam_size` | JSON with `text`, `language`, `audio_duration_sec`, `elapsed_ms` |
-  | TTS | `POST /synthesize` | JSON `{"text": "...", "voice": "..."}` (`voice` optional) | WAV audio |
-  | Both | `GET /health` | | JSON with `status` |
+The transcriber and TTS services are separate projects,
+[ai-transcriber](https://github.com/99ecarvalho/ai-transcriber) and
+[ai-tts](https://github.com/99ecarvalho/ai-tts), included as git submodules
+in `external/` and built by `docker-compose.yml`.
+Clone with `--recurse-submodules`, or run `git submodule update --init`
+(`./build.sh` does this for you).
 
-  A small FastAPI wrapper around
-  [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and
-  [Piper](https://github.com/rhasspy/piper) is enough.
+To use other services instead, change their `build.context` (or replace
+`build` with an `image`) in `docker-compose.yml`. They only need to provide:
+
+| Service | Endpoint | Request | Response |
+| ------- | -------- | ------- | -------- |
+| Transcriber | `POST /transcribe` | multipart `file`, plus optional `language`, `vad_filter`, `beam_size` | JSON with `text`, `language`, `audio_duration_sec`, `elapsed_ms` |
+| TTS | `POST /synthesize` | JSON `{"text": "...", "voice": "..."}` (`voice` optional) | WAV audio |
+| Both | `GET /health` | | JSON with `status` |
 
 ## Getting started
 
 ```bash
-git clone https://github.com/99ecarvalho/msgbot.git
+git clone --recurse-submodules https://github.com/99ecarvalho/msgbot.git
 cd msgbot
 cp .env.example .env     # then fill in your keys
 ./build.sh               # docker compose build
@@ -142,6 +143,9 @@ All settings are environment variables, read from `.env`
 | `DEFAULT_SYSTEM_PROMPT` | `You are a helpful voice assistant. ...` | System prompt when a chat has none |
 | `RESPONSE_MODE` | `auto` | `text`, `voice`, or `auto` (voice reply to voice, text reply to text) |
 | `DATA_DIR` | `/app/data` | Where the SQLite database and audio files are stored |
+| `WHISPER_MODEL` | `large-v3` | Whisper model for the transcriber, e.g. `small` or `medium` for less GPU memory |
+| `WHISPER_DEVICE` | `cuda` | Transcriber device: `cuda`, `cpu`, or `auto` |
+| `WHISPER_PRELOAD` | `1` | Load the Whisper model when the transcriber starts instead of on the first request |
 
 The system prompt and response mode can also be changed in the web UI, for
 all chats or per chat.
@@ -248,6 +252,8 @@ bot/
 └── static/             CSS, JavaScript, vendored htmx and Pico CSS
 docker/evolution/       Evolution API image with LID patches
 doc/evolution/          Notes on the Evolution API
+external/ai-transcriber Transcriber service (git submodule)
+external/ai-tts         TTS service (git submodule)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
@@ -289,6 +295,7 @@ FOR A PARTICULAR PURPOSE.
 | [htmx](https://htmx.org/) 2.0.4 | 0BSD | Vendored in `bot/static/htmx.min.js` |
 | [Pico CSS](https://picocss.com/) 2.1.1 | MIT | Vendored in `bot/static/pico.min.css` |
 | [Evolution API](https://github.com/EvolutionAPI/evolution-api) | Apache-2.0 with additional conditions (see its LICENSE) | Docker image, patched at build time by `docker/evolution/apply-patches.js` |
+| [ai-transcriber](https://github.com/99ecarvalho/ai-transcriber), [ai-tts](https://github.com/99ecarvalho/ai-tts) | LGPL-3.0-or-later | Git submodules in `external/`, each with its own license and dependencies |
 
 Python dependencies are listed in [requirements.txt](requirements.txt) and
 keep their own licenses.

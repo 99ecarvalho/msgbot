@@ -41,9 +41,10 @@ confirmed, a fix is prepared on `main`, and you will be credited in the
 advisory unless you prefer otherwise. Please give a reasonable time to fix
 the problem before disclosing it publicly.
 
-The patched Evolution API, the transcriber, and the TTS service come from
-other projects. Report a problem in them to their maintainers, unless it is
-caused by how MsgBot configures or patches them.
+Evolution API comes from another project; report a problem in it to its
+maintainers, unless it is caused by how MsgBot configures or patches it. The
+transcriber ([ai-transcriber](https://github.com/99ecarvalho/ai-transcriber)) and TTS service ([ai-tts](https://github.com/99ecarvalho/ai-tts)) have their own repositories and
+security policies; report problems in them there.
 
 ## Deploying safely
 

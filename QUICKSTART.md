@@ -21,13 +21,13 @@ You need:
 - an NVIDIA GPU with the NVIDIA Container Toolkit, for the transcriber
   (`docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`
   should list your GPU);
-- an Azure OpenAI resource;
-- a **transcriber** and a **TTS** service. They are not part of this
-  repository: `docker-compose.yml` builds them from
-  `../company-manager/framework/transcriber` and `../company-manager/framework/tts`.
-  Change those two `build.context` paths to your own services. The HTTP API
-  they must provide is described in the README, under
-  [Requirements](README.md#requirements).
+- an Azure OpenAI resource.
+
+The transcriber
+([ai-transcriber](https://github.com/99ecarvalho/ai-transcriber)) and the
+TTS service ([ai-tts](https://github.com/99ecarvalho/ai-tts)) come with the
+code as git submodules in `external/`, and are built with the rest of the
+stack.
 
 WhatsApp works on your own computer. Telegram needs a server reachable from
 the internet over HTTPS; see
@@ -36,9 +36,18 @@ the internet over HTTPS; see
 ## 1. Get the code
 
 ```bash
-git clone https://github.com/99ecarvalho/msgbot.git
+git clone --recurse-submodules https://github.com/99ecarvalho/msgbot.git
 cd msgbot
 ```
+
+If you already cloned without `--recurse-submodules`, the `external/`
+folders are empty; fetch them with:
+
+```bash
+git submodule update --init
+```
+
+`./build.sh` also does this when they are missing.
 
 ## 2. Get your keys
 
@@ -104,9 +113,16 @@ git.
 ./run.sh -d       # docker compose up -d
 ```
 
-The first build, and the first transcription, download speech models and
-can take several minutes. Follow the logs with `docker compose logs -f bot`, and stop
+The first build downloads the CUDA base image and the Piper voice, and the
+transcriber downloads its Whisper model (about 3 GB for the default
+`large-v3`) the first time it starts, so the first run can take a while.
+Follow the logs with `docker compose logs -f bot transcriber`, and stop
 everything with `docker compose down` (your data stays in Docker volumes).
+
+With less GPU memory, choose a smaller model in `.env`, for example
+`WHISPER_MODEL=small`. Without a GPU, set `WHISPER_DEVICE=cpu` and a small
+model, and remove the `deploy:` block from the `transcriber` service in
+`docker-compose.yml`. Transcription is then much slower.
 
 ## 5. Pair WhatsApp
 
@@ -203,9 +219,18 @@ Read [SECURITY.md](SECURITY.md) before exposing the bot to the internet.
 
 ```bash
 git pull
+git submodule update --init --recursive   # check out the transcriber/TTS versions this commit uses
 ./build.sh
 ./run.sh -d
 ```
+
+To move the transcriber and TTS to their latest `main` instead, run
+`git submodule update --remote`, test, and commit the new submodule versions.
+
+If you installed MsgBot before the transcriber and TTS became submodules,
+the transcriber now uses a new `transcriber_cache` volume (the image no
+longer runs as root). Once it works, you can delete the old one with
+`docker volume rm msgbot_whisper_cache`.
 
 To rebuild only the bot after changing its code:
 
@@ -223,5 +248,6 @@ The database migrates itself on startup.
 | The QR code doesn't appear | `docker compose logs evolution-api`; try **Reconnect** on the QR page |
 | Messages appear on **Messages** but get no answer | The chat is whitelisted, the entry is enabled, and an enabled workflow is linked to it |
 | Telegram receives nothing | `BOT_URL` is public HTTPS and reachable; check `https://api.telegram.org/bot<token>/getWebhookInfo` |
-| Transcriber fails to start | The NVIDIA Container Toolkit is installed and the GPU check above works |
+| Transcriber fails to start | The NVIDIA Container Toolkit is installed and the GPU check above works; `docker compose logs transcriber` |
+| Build fails with a missing `external/...` path | Run `git submodule update --init` |
 | WhatsApp group or `@lid` contacts fail | See [doc/evolution/troubleshooting.md](doc/evolution/troubleshooting.md) |

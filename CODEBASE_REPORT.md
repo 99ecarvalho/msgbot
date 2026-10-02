@@ -77,12 +77,13 @@ Evolution API ──────────► FastAPI Bot ◄─────�
 | --- | --- | --- | --- |
 | Bot (web UI + webhooks) | `8088` | `8000` | FastAPI: dashboard, QR, messages, config, logs |
 | Evolution API | `8085` | `8080` | WhatsApp bridge (Baileys), REST API, patched for LID support |
-| Transcriber | `8001` | `8000` | faster-whisper, GPU speech-to-text (external) |
-| TTS | `8002` | `8000` | Piper TTS, PT-BR voice by default (external) |
+| Transcriber | `8001` | `8000` | faster-whisper, GPU speech-to-text (submodule) |
+| TTS | `8002` | `8000` | Piper TTS, PT-BR voice by default (submodule) |
 | PostgreSQL | — | `5432` | Evolution API database (internal only) |
 
-The transcriber and TTS services are not part of this repository; see
-[Requirements](README.md#requirements) for the HTTP contract they meet.
+The transcriber and TTS services are separate projects, [ai-transcriber](https://github.com/99ecarvalho/ai-transcriber) and
+[ai-tts](https://github.com/99ecarvalho/ai-tts), included as git submodules in `external/`; see
+[Requirements](README.md#requirements) for the HTTP contract the bot uses.
 
 ---
 
@@ -110,6 +111,8 @@ bot/
 └── static/                      CSS, JS, htmx, Pico CSS
 docker/evolution/                Evolution API image + LID patches
 doc/evolution/                   Evolution API reference notes
+external/ai-transcriber/         Transcriber service (git submodule)
+external/ai-tts/                 TTS service (git submodule)
 ```
 
 ---
@@ -401,14 +404,15 @@ Audio Summary Bot's prompt and labels are in Brazilian Portuguese.
 docker-compose.yml — 5 services
 ├── postgres:16-alpine   Evolution API database
 ├── evolution-api        Custom build (./docker/evolution): v2.2.3 + LID patches
-├── transcriber          External build (faster-whisper on GPU)
-├── tts                  External build (Piper TTS)
+├── transcriber          Submodule build (./external/ai-transcriber): faster-whisper on GPU
+├── tts                  Submodule build (./external/ai-tts): Piper TTS
 └── bot                  Local build (python:3.11-slim + ffmpeg)
 ```
 
-**Volumes:** `postgres_data`, `evolution_data`, `whisper_cache`, `bot_data`.
+**Volumes:** `postgres_data`, `evolution_data`, `transcriber_cache`, `bot_data`.
 **Network:** `msgbot-net` (bridge).
 **GPU:** the transcriber reserves one NVIDIA GPU.
+**Health checks:** the transcriber and TTS images define their own.
 
 **Evolution API patches:** `docker/evolution/apply-patches.js` fixes
 Baileys 6.7.12's handling of WhatsApp LIDs (Linked Identities) at image

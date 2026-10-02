@@ -29,6 +29,11 @@ little back-and-forth as possible.
 Security problems are the exception: please **don't** open a public issue,
 and follow [SECURITY.md](SECURITY.md) instead.
 
+The transcriber and TTS services live in their own repositories,
+[ai-transcriber](https://github.com/99ecarvalho/ai-transcriber) and [ai-tts](https://github.com/99ecarvalho/ai-tts), included here as git submodules in `external/`. Bugs and
+changes in those services belong in their repositories; this one only
+records which version of each it uses.
+
 ## Reporting bugs
 
 Search the [existing issues](https://github.com/99ecarvalho/msgbot/issues)
@@ -93,6 +98,7 @@ The code is organized as follows:
 | `bot/web/` | Web UI routes and WebSocket endpoints |
 | `bot/templates/`, `bot/static/` | Pages, styles, and scripts |
 | `docker/evolution/` | Evolution API image and the LID patches applied to it |
+| `external/` | The transcriber and TTS services (git submodules; don't edit them here) |
 
 ### Testing your change
 
