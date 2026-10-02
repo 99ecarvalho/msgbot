@@ -93,7 +93,7 @@ docker logs msgbot-evolution-api-1 --tail 50
 
 | Service | Image | Data Volume |
 |---------|-------|-------------|
-| `evolution-api` | `atendai/evolution-api:v2.2.3` | `evolution_data:/evolution` |
+| `evolution-api` | `evoapicloud/evolution-api:v2.2.3` + LID patches | `evolution_data:/evolution` |
 | `postgres` | `postgres:16-alpine` | `postgres_data:/var/lib/postgresql/data` |
 | `bot` | Built from `./Dockerfile` | `bot_data:/app/data` |
 

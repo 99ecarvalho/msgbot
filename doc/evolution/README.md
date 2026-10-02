@@ -27,7 +27,7 @@ The key is set via `AUTHENTICATION_API_KEY` env var in docker-compose and stored
 ## LID patches
 
 The image built from `docker/evolution/` is the official
-`atendai/evolution-api:v2.2.3`, with three fixes for WhatsApp LIDs applied to
+`evoapicloud/evolution-api:v2.2.3` (formerly `atendai/evolution-api`), with three fixes for WhatsApp LIDs applied to
 its compiled code by `docker/evolution/apply-patches.js`. Their source
 commits are in forks, pinned as git submodules:
 
