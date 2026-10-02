@@ -17,6 +17,11 @@
  *   - Group messages fail with "SessionError: No sessions" because participant
  *     JIDs are incorrectly encoded as @s.whatsapp.net instead of @lid
  *
+ * The same fixes, as source commits, are pinned as submodules in external/
+ * (not fetched by default; see doc/evolution/README.md):
+ *   Patch 1: evolution-api fix/lid-validation-bypass, commit 145209b
+ *   Patches 2-3: Baileys fix/lid-jid-encoding, commit cfcc772
+ *
  * Run: node apply-patches.js
  */
 const fs = require('fs');

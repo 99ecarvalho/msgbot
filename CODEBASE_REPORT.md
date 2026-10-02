@@ -93,7 +93,9 @@ docker/evolution/      Evolution API image + LID patches
 doc/evolution/         Evolution API reference notes
 external/
 ├── ai-transcriber/    Transcriber service (git submodule)
-└── ai-tts/            TTS service (git submodule)
+├── ai-tts/            TTS service (git submodule)
+├── baileys/           Baileys fork with the LID fix (submodule, not fetched by default)
+└── evolution-api/     Evolution API fork with the LID fix (submodule, not fetched by default)
 ```
 
 ---
@@ -388,4 +390,6 @@ docker-compose.yml — 5 services
 **Evolution API patches:** `docker/evolution/apply-patches.js` fixes
 Baileys 6.7.12's handling of WhatsApp LIDs (Linked Identities) at image
 build time, so direct messages to `@lid` contacts and group messages work.
+The source commits of these fixes are pinned in `external/baileys` and
+`external/evolution-api`; see [doc/evolution/](doc/evolution/README.md#lid-patches).
 

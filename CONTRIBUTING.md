@@ -98,7 +98,7 @@ The code is organized as follows:
 | `bot/web/` | Web UI routes and WebSocket endpoints |
 | `bot/templates/`, `bot/static/` | Pages, styles, and scripts |
 | `docker/evolution/` | Evolution API image and the LID patches applied to it |
-| `external/` | The transcriber and TTS services (git submodules; don't edit them here) |
+| `external/` | Git submodules, don't edit them here: the transcriber and TTS services, and the Baileys and Evolution API forks with the source of the LID patches (see [doc/evolution/](doc/evolution/README.md#lid-patches)) |
 
 ### Testing your change
 

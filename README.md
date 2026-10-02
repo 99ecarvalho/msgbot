@@ -254,6 +254,8 @@ docker/evolution/       Evolution API image with LID patches
 doc/evolution/          Notes on the Evolution API
 external/ai-transcriber Transcriber service (git submodule)
 external/ai-tts         TTS service (git submodule)
+external/baileys        Source of the Baileys LID fix (submodule, not fetched by default)
+external/evolution-api  Source of the Evolution API LID fix (submodule, not fetched by default)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
@@ -296,6 +298,7 @@ FOR A PARTICULAR PURPOSE.
 | [Pico CSS](https://picocss.com/) 2.1.1 | MIT | Vendored in `bot/static/pico.min.css` |
 | [Evolution API](https://github.com/EvolutionAPI/evolution-api) | Apache-2.0 with additional conditions (see its LICENSE) | Docker image, patched at build time by `docker/evolution/apply-patches.js` |
 | [ai-transcriber](https://github.com/99ecarvalho/ai-transcriber), [ai-tts](https://github.com/99ecarvalho/ai-tts) | LGPL-3.0-or-later | Git submodules in `external/`, each with its own license and dependencies |
+| [Baileys](https://github.com/WhiskeySockets/Baileys), [Evolution API](https://github.com/EvolutionAPI/evolution-api) forks | MIT; Apache-2.0 with additional conditions | Git submodules in `external/` with the source of the LID patches; not fetched or built by default |
 
 Python dependencies are listed in [requirements.txt](requirements.txt) and
 keep their own licenses.
