@@ -126,8 +126,9 @@ model, and remove the `deploy:` block from the `transcriber` service in
 
 ## 5. Pair WhatsApp
 
-1. Open <http://localhost:8088>. The dashboard shows whether each service is
-   healthy.
+1. Open the address `./run.sh` printed, usually <http://localhost:8088>, and
+   log in as `admin` with the `WEB_PASSWORD` that `./run.sh` saved in `.env`.
+   The dashboard shows whether each service is healthy.
 2. Go to **WhatsApp QR**.
 3. On your phone, open WhatsApp → **Settings** → **Linked devices** →
    **Link a device**, and scan the code.
@@ -176,25 +177,18 @@ must have a public HTTPS address.
    BOT_URL=https://bot.example.com
    ```
 
-3. Put a reverse proxy with TLS in front of the bot. With
-   [Caddy](https://caddyserver.com/), which gets a Let's Encrypt certificate
-   by itself, this `Caddyfile` exposes only the webhooks and protects the web
-   UI with a password (create the hash with `caddy hash-password`):
+3. Put a reverse proxy with TLS in front of the bot, so the login and the
+   webhooks are encrypted. With [Caddy](https://caddyserver.com/), which gets
+   a Let's Encrypt certificate by itself, this `Caddyfile` is enough:
 
    ```caddyfile
    bot.example.com {
-       @webhooks path /webhook/*
-       handle @webhooks {
-           reverse_proxy localhost:8088
-       }
-       handle {
-           basic_auth {
-               admin $2a$14$...your-bcrypt-hash...
-           }
-           reverse_proxy localhost:8088
-       }
+       reverse_proxy localhost:8088
    }
    ```
+
+   The bot itself asks for the web UI login and checks the webhooks' secrets.
+   Set a strong `WEB_PASSWORD` in `.env` before exposing it.
 
 4. Build and start on the server:
 
@@ -248,6 +242,8 @@ The database migrates itself on startup.
 | The QR code doesn't appear | `docker compose logs evolution-api`; try **Reconnect** on the QR page |
 | Messages appear on **Messages** but get no answer | The chat is whitelisted, the entry is enabled, and an enabled workflow is linked to it |
 | Telegram receives nothing | `BOT_URL` is public HTTPS and reachable; check `https://api.telegram.org/bot<token>/getWebhookInfo` |
+| Logs show `webhook_rejected` | The request didn't carry the webhook secret. Restart the bot so it registers the webhooks again; after changing `TELEGRAM_BOT_TOKEN` or `EVOLUTION_API_KEY`, a restart is required |
+| Forgot the web UI password | It is `WEB_PASSWORD` in `.env`; if that is empty, look for `web_password_generated` in `docker compose logs bot` |
 | Transcriber fails to start | The NVIDIA Container Toolkit is installed and the GPU check above works; `docker compose logs transcriber` |
 | Build fails with a missing `external/...` path | Run `git submodule update --init` |
 | WhatsApp group or `@lid` contacts fail | See [doc/evolution/troubleshooting.md](doc/evolution/troubleshooting.md) |

@@ -27,8 +27,8 @@ hosted on Azure), and replies with text or voice (Piper TTS). It includes a
 complete web UI with a dashboard, message history, configurable workflows,
 and a whitelist.
 
-It is written in Python 3.11, licensed under LGPL-3.0-or-later, and has no
-automated tests yet.
+It is written in Python 3.11 and licensed under LGPL-3.0-or-later. Tests
+(pytest) cover the web UI login and the webhook checks.
 
 ---
 
@@ -86,7 +86,8 @@ bot/
 │   └── tts.py         Piper TTS HTTP client
 ├── web/
 │   ├── routes.py      Web UI routes (dashboard, config, etc.)
-│   └── ws.py          WebSockets for live logs and QR code
+│   ├── ws.py          WebSockets for live logs and QR code
+│   └── auth.py        Login, session cookie, CSRF check, webhook secrets
 ├── templates/         Jinja2 templates
 └── static/            CSS, JS, htmx, Pico CSS
 docker/evolution/      Evolution API image + LID patches
@@ -107,7 +108,9 @@ external/
 - **Lifecycle (lifespan):** initializes the database, creates the Evolution
   API instance, and registers the Telegram and WhatsApp webhooks.
 - **Endpoints:** `POST /webhook/telegram`, `POST /webhook/whatsapp`,
-  `GET /health`.
+  `GET /health`. Both webhooks reject requests without their secret.
+- **Login:** installs `AuthMiddleware` and the login routes from
+  `web/auth.py`.
 - **Logging:** structlog with JSON output and ISO timestamps.
 - **Background tasks:** WhatsApp webhooks are processed in the background
   with `asyncio.create_task`; the tasks are kept in a set so they aren't
@@ -255,6 +258,7 @@ external/
 | `GET /logs` | Live logs (WebSocket) |
 | `GET /llm-logs` | LLM call logs |
 | `GET /audios/{path}` | Serves audio files |
+| `GET`/`POST /login`, `POST /logout` | Web UI login (`auth.py`); everything else above needs a session |
 
 **WebSockets (`ws.py`):**
 
@@ -334,15 +338,16 @@ vulnerability.
 - **Parameterized SQL:** every value goes through `?` placeholders.
 - **Secrets in env vars:** all credentials are loaded from `.env`, which is
   ignored by git.
+- **Web UI login:** a signed, `HttpOnly`, `SameSite=Strict` session cookie
+  protects every page, endpoint, audio file, and WebSocket.
+- **Cross-site protection:** state-changing requests and WebSockets from
+  other sites are rejected.
+- **Webhook secrets:** Telegram's `secret_token` and an Evolution API
+  header are checked on every webhook.
 
 ### Points of attention ⚠️
 
-- **No web UI authentication or CSRF protection:** the dashboard, config,
-  and every web route are open. Anyone who reaches the port can read
-  messages, change the configuration, send replies, and unlink WhatsApp.
-- **Unverified webhooks:** `/webhook/whatsapp` doesn't check that requests
-  come from Evolution API, and the Telegram webhook is registered without a
-  `secret_token`.
+- **Single shared login:** no user accounts, roles, or lockout.
 - **Dynamic SQL in `update_*` functions:** the `SET` clause is built with an
   f-string. Column names come from the code, never from a request, so it is
   safe, but the pattern is fragile.

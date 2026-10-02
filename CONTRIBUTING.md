@@ -102,11 +102,12 @@ The code is organized as follows:
 
 ### Testing your change
 
-There is no automated test suite yet; tests are a welcome contribution.
-Before opening a pull request:
+The automated tests are in `tests/` (pytest); more are welcome, especially
+for the workflow engine. Before opening a pull request:
 
-1. Check that everything still compiles:
-   `python -m compileall -q bot`.
+1. Install the development requirements
+   (`pip install -r requirements-dev.txt`) and run `python -m pytest`.
+   Add a test for a bug fix or new behavior where you can.
 2. Rebuild and start the stack (`docker compose build bot && docker compose
    up -d bot`) and check `docker compose logs bot` for errors.
 3. Exercise what you changed from a real chat: a text message and a voice
@@ -210,7 +211,7 @@ application working.
 
 Before you open a pull request, check that:
 
-- [ ] `python -m compileall -q bot` passes and the bot starts without errors;
+- [ ] `python -m pytest` passes and the bot starts without errors;
 - [ ] you tested the change from a real chat, as described above;
 - [ ] there are no new errors in the browser console;
 - [ ] documentation and `.env.example` reflect any change in behavior;

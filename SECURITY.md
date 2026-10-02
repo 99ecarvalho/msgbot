@@ -51,17 +51,17 @@ security policies; report problems in them there.
 MsgBot is meant to be run by one person or a small trusted team, on a
 private network. If you expose it to the internet:
 
-1. **Never expose the web UI without authentication.** Put a reverse proxy
-   with TLS and a login (for example Caddy or nginx with basic auth, or an
-   identity-aware proxy) in front of port `8088`, and only let
-   `/webhook/telegram` through without it. [QUICKSTART.md](QUICKSTART.md)
-   has an example.
+1. **Use TLS and a strong web UI password.** The bot serves plain HTTP, so
+   put a reverse proxy with TLS (for example Caddy or nginx) in front of port
+   `8088`; [QUICKSTART.md](QUICKSTART.md) has an example. Set a long, random
+   `WEB_PASSWORD`: `./run.sh` generates one if it is missing.
 2. **Don't publish the other ports.** Evolution API (`8085`), the transcriber
    (`8001`), and TTS (`8002`) don't need to be reachable from outside. Bind
    them to `127.0.0.1` in `docker-compose.yml`, or block them with your cloud
    provider's firewall. Docker's published ports bypass `ufw`.
 3. **Use strong secrets.** Generate `EVOLUTION_API_KEY` with
-   `openssl rand -hex 32`. Keep `.env` out of git (it is ignored) and
+   `openssl rand -hex 32`. The webhook secrets are derived from it and from
+   `TELEGRAM_BOT_TOKEN`, so changing either changes them too. Keep `.env` out of git (it is ignored) and
    readable only by you (`chmod 600 .env`).
 4. **Change the PostgreSQL password** in `docker-compose.yml` if the database
    could ever be reachable from another host.
@@ -77,6 +77,21 @@ private network. If you expose it to the internet:
    processing. Make sure that is acceptable under the privacy laws that apply
    to you and to them.
 
+## How the bot protects itself
+
+- **Web UI login:** every page, htmx endpoint, audio file, and WebSocket
+  needs a session, created by logging in with `WEB_USERNAME` and
+  `WEB_PASSWORD`. The session cookie is signed, `HttpOnly`, and
+  `SameSite=Strict`, lasts 7 days, and stops working when the password
+  changes. Failed logins are logged and slowed down. Without
+  `WEB_PASSWORD`, the bot generates a random password at startup and logs it.
+- **Cross-site requests:** requests that change something, and WebSocket
+  connections, are rejected when the browser says they come from another
+  site (`Sec-Fetch-Site` or `Origin`).
+- **Webhooks:** Telegram's webhook is registered with a `secret_token`, and
+  Evolution API is configured to send an `X-MsgBot-Webhook-Token` header.
+  Webhook requests without the right secret get `403`.
+
 ## Known limitations
 
 These are known gaps in the current version. Contributions that close them
@@ -84,8 +99,8 @@ are welcome.
 
 | Area | Limitation | Mitigation |
 | ---- | ---------- | ---------- |
-| Web UI | No authentication or CSRF protection. Anyone who reaches it can read messages, send messages from your account, change prompts, and unlink WhatsApp | Keep it private, or behind an authenticating proxy |
-| WhatsApp webhook | `/webhook/whatsapp` does not verify that requests come from Evolution API, so anyone who reaches it can inject fake messages | Don't expose the bot's port; only Evolution API needs to reach it, over the Docker network |
-| Telegram webhook | The webhook is registered without a `secret_token`, so requests to `/webhook/telegram` are not verified | Treat the webhook URL as public; rely on the whitelist to limit what a forged update can trigger |
+| Web UI | One shared login, with no user accounts, roles, or lockout after repeated failures | Use a strong `WEB_PASSWORD`; add an identity-aware proxy if several people need access |
+| Transport | The bot serves plain HTTP | Put a reverse proxy with TLS in front of it |
+| Evolution API | Its port (`8085`) is published on the host and protected only by `EVOLUTION_API_KEY` | Bind it to `127.0.0.1` or firewall it |
 | LLM | Message content is sent to the LLM as-is and the reply goes back to the chat, so a sender can try prompt injection against your system prompt | Don't put secrets in system prompts; the LLM has no tools or access to other data |
 | Storage | The SQLite database and audio files are not encrypted at rest | Use disk encryption on the host |

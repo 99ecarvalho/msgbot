@@ -113,9 +113,11 @@ cp .env.example .env     # then fill in your keys
 ./run.sh -d              # docker compose up -d
 ```
 
-Open <http://localhost:8088>, go to **WhatsApp QR**, and scan the code with
-WhatsApp (*Linked devices → Link a device*). Then whitelist yourself and
-enable a workflow.
+`./run.sh` prints the web UI's address. On the first run it also generates a
+login password and saves it in `.env` as `WEB_PASSWORD`. Open
+<http://localhost:8088>, log in as `admin`, go to **WhatsApp QR**, and scan
+the code with WhatsApp (*Linked devices → Link a device*). Then whitelist
+yourself and enable a workflow.
 
 [QUICKSTART.md](QUICKSTART.md) walks through each step, including creating a
 Telegram bot and deploying to a server.
@@ -140,6 +142,8 @@ All settings are environment variables, read from `.env`
 | `TRANSCRIBER_URL` | `http://transcriber:8000` | Transcriber address |
 | `TTS_URL` | `http://tts:8000` | TTS address |
 | `BOT_URL` | `http://localhost:8000` | Where webhooks reach the bot: `http://bot:8000` for WhatsApp only, your public HTTPS URL for Telegram |
+| `WEB_USERNAME` | `admin` | Web UI login name |
+| `WEB_PASSWORD` | | Web UI password. `./run.sh` generates one on the first run; if it is empty, the bot logs a new random password at every start |
 | `DEFAULT_SYSTEM_PROMPT` | `You are a helpful voice assistant. ...` | System prompt when a chat has none |
 | `RESPONSE_MODE` | `auto` | `text`, `voice`, or `auto` (voice reply to voice, text reply to text) |
 | `DATA_DIR` | `/app/data` | Where the SQLite database and audio files are stored |
@@ -218,10 +222,12 @@ Available in WhatsApp and Telegram:
 
 ## Security
 
-**The web UI has no login.** Anyone who can reach port `8088` can read your
-messages, send messages as you, and unlink your WhatsApp. Keep it on a
-private network, or put it behind a reverse proxy with authentication. Read
-[SECURITY.md](SECURITY.md) before deploying, and to report a vulnerability.
+The web UI asks for a login (`WEB_USERNAME` / `WEB_PASSWORD`) and rejects
+requests from other sites. The Telegram and WhatsApp webhooks only accept
+requests carrying a secret the bot registers with each service. The UI is
+still plain HTTP, so anything beyond your own computer or network needs a
+reverse proxy with TLS. Read [SECURITY.md](SECURITY.md) before deploying, and
+to report a vulnerability.
 
 ## Development
 
@@ -230,7 +236,8 @@ The bot is a Python 3.11 FastAPI application. To work on it outside Docker:
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+python -m pytest                        # run the tests
 DATA_DIR=./data python -m bot.main      # http://localhost:8000
 ```
 
